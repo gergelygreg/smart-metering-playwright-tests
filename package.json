@@ -1,0 +1,28 @@
+{
+  "name": "smart-metering-playwright-tests",
+  "version": "1.0.0",
+  "description": "IoT and Smart Metering test automation lab using Angular, Java Spring Boot and Playwright TypeScript.",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gergelygreg/smart-metering-playwright-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gergelygreg/smart-metering-playwright-tests/issues"
+  },
+  "homepage": "https://github.com/gergelygreg/smart-metering-playwright-tests#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2"
+  },
+  "private": true
+}
