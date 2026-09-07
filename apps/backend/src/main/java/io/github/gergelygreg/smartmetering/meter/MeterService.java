@@ -36,4 +36,15 @@ public class MeterService {
 
         return meter;
     }
+
+    public MeterResponse getMeterById(String id) {
+        return metersBySerialNumber.values()
+                .stream()
+                .filter(meter -> meter.id().equals(id))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Meter not found."
+                ));
+    }
 }
