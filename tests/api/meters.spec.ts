@@ -1,18 +1,14 @@
-import { randomUUID } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../src/fixtures/api-fixtures.js';
+
+import { MeterBuilder } from '../../src/builders/MeterBuilder.js';
 
 test('POST /api/meters creates an online meter @api', async ({
-  request,
+  meterApi,
 }) => {
-  const serialNumber = `SN-TEST-${randomUUID()}`;
+  const payload = new MeterBuilder().build();
+  const { serialNumber } = payload;
 
-  const response = await request.post('/api/meters', {
-    data: {
-      serialNumber,
-      status: 'ONLINE',
-      firmwareVersion: '1.0.0',
-    },
-  });
+  const response = await meterApi.createMeter(payload);
 
   expect(response.status()).toBe(201);
 

@@ -1,18 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../src/fixtures/api-fixtures.js';
+
+import { MeterBuilder } from '../../src/builders/MeterBuilder.js';
 
 test('GET /api/meters/{id} returns a previously created meter @api', async ({
-  request,
+  meterApi,
 }) => {
-  const serialNumber = `SN-TEST-${randomUUID()}`;
+  const payload = new MeterBuilder().build();
+  const { serialNumber } = payload;
 
-  const createResponse = await request.post('/api/meters', {
-    data: {
-      serialNumber,
-      status: 'ONLINE',
-      firmwareVersion: '1.0.0',
-    },
-  });
+  const createResponse = await meterApi.createMeter(payload);
 
   expect(createResponse.status()).toBe(201);
 
@@ -26,7 +23,9 @@ test('GET /api/meters/{id} returns a previously created meter @api', async ({
 
   expect(location).toMatch(/^\/api\/meters\/[0-9a-f-]+$/);
 
-  const getResponse = await request.get(location);
+  const meterId = location.substring('/api/meters/'.length);
+
+  const getResponse = await meterApi.getMeterById(meterId);
 
   expect(getResponse.status()).toBe(200);
   expect(getResponse.headers()['content-type']).toContain('application/json');
@@ -42,11 +41,12 @@ test('GET /api/meters/{id} returns a previously created meter @api', async ({
 });
 
 test('GET /api/meters/{id} returns 404 for an unknown meter @api', async ({
-  request,
+  meterApi,
 }) => {
   const unknownId = randomUUID();
 
-  const response = await request.get(`/api/meters/${unknownId}`);
+
+  const response = await meterApi.getMeterById(unknownId);
 
   expect(response.status()).toBe(404);
 });
