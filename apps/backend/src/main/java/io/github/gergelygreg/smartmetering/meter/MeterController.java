@@ -1,6 +1,7 @@
 package io.github.gergelygreg.smartmetering.meter;
 
 import java.net.URI;
+import java.util.List;
 
 import jakarta.validation.Valid;
 
@@ -46,5 +47,10 @@ public class MeterController {
         MeterResponse meter = meterService.getMeterById(id);
 
         return ResponseEntity.ok(meter);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<MeterResponse>> getAllMeters() {
+        return ResponseEntity.ok(meterService.getAllMeters());
     }
 }

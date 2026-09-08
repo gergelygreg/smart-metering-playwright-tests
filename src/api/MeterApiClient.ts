@@ -29,4 +29,8 @@ export class MeterApiClient {
       `${this.basePath}/${encodeURIComponent(id)}`,
     );
   }
+
+  async getAllMeters(): Promise<APIResponse> {
+    return this.request.get(this.basePath);
+  }
 }

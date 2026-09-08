@@ -1,6 +1,7 @@
 package io.github.gergelygreg.smartmetering.meter;
 
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -46,5 +47,9 @@ public class MeterService {
                         HttpStatus.NOT_FOUND,
                         "Meter not found."
                 ));
+    }
+
+    public List<MeterResponse> getAllMeters() {
+        return List.copyOf(metersBySerialNumber.values());
     }
 }
