@@ -5,9 +5,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MeterService {
@@ -29,10 +27,7 @@ public class MeterService {
         );
 
         if (existing != null) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "A meter with this serial number already exists."
-            );
+            throw new MeterSerialConflictException();
         }
 
         return meter;
@@ -43,10 +38,7 @@ public class MeterService {
                 .stream()
                 .filter(meter -> meter.id().equals(id))
                 .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Meter not found."
-                ));
+                .orElseThrow(MeterNotFoundException::new);
     }
 
     public List<MeterResponse> getAllMeters() {
