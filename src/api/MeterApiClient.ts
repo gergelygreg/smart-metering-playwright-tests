@@ -33,4 +33,10 @@ export class MeterApiClient {
   async getAllMeters(): Promise<APIResponse> {
     return this.request.get(this.basePath);
   }
+
+  async deleteMeter(id: string): Promise<APIResponse> {
+    return this.request.delete(
+      `${this.basePath}/${encodeURIComponent(id)}`,
+    );
+  }
 }

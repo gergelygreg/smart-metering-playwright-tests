@@ -44,4 +44,17 @@ public class MeterService {
     public List<MeterResponse> getAllMeters() {
         return List.copyOf(metersBySerialNumber.values());
     }
+
+    public void deleteMeter(String id) {
+        MeterResponse meter = getMeterById(id);
+
+        boolean removed = metersBySerialNumber.remove(
+                meter.serialNumber(),
+                meter
+        );
+
+        if (!removed) {
+            throw new MeterNotFoundException();
+        }
+    }
 }
