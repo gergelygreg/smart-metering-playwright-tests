@@ -1,6 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 
 import { MeterApiClient } from '../api/MeterApiClient.js';
+import { TrackedMeterApiClient } from './TrackedMeterApiClient.js';
 
 type ApiFixtures = {
   meterApi: MeterApiClient;
@@ -8,9 +9,13 @@ type ApiFixtures = {
 
 export const test = base.extend<ApiFixtures>({
   meterApi: async ({ request }, use) => {
-    const meterApi = new MeterApiClient(request);
+    const meterApi = new TrackedMeterApiClient(request);
 
-    await use(meterApi);
+    try {
+      await use(meterApi);
+    } finally {
+      await meterApi.cleanupCreatedMeters();
+    }
   },
 });
 
