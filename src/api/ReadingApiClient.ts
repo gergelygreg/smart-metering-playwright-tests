@@ -23,4 +23,12 @@ export class ReadingApiClient {
       },
     );
   }
+
+  async getReadings(
+    meterId: string,
+  ): Promise<APIResponse> {
+    return this.request.get(
+      `/api/meters/${encodeURIComponent(meterId)}/readings`,
+    );
+  }
 }

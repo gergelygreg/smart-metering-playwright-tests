@@ -1,5 +1,6 @@
 package io.github.gergelygreg.smartmetering.meterreading;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -46,5 +47,18 @@ public class MeterReadingService {
                 .put(reading.id(), reading);
 
         return reading;
+    }
+
+    public List<MeterReadingResponse> getReadings(String meterId) {
+        meterService.getMeterById(meterId);
+
+        ConcurrentMap<String, MeterReadingResponse> readings =
+                readingsByMeterId.get(meterId);
+
+        if (readings == null) {
+            return List.of();
+        }
+
+        return List.copyOf(readings.values());
     }
 }
