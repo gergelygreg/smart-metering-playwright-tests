@@ -59,4 +59,20 @@ public class MeterReadingController {
                 meterReadingService.getReadings(meterId)
         );
     }
+
+    @GetMapping(
+            value = "/{readingId}",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<MeterReadingResponse> getReading(
+            @PathVariable String meterId,
+            @PathVariable String readingId
+    ) {
+        return ResponseEntity.ok(
+                meterReadingService.getReading(
+                        meterId,
+                        readingId
+                )
+        );
+    }
 }

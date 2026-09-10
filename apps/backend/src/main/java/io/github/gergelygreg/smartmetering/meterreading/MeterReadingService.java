@@ -61,4 +61,26 @@ public class MeterReadingService {
 
         return List.copyOf(readings.values());
     }
+
+    public MeterReadingResponse getReading(
+            String meterId,
+            String readingId
+    ) {
+        meterService.getMeterById(meterId);
+
+        ConcurrentMap<String, MeterReadingResponse> readings =
+                readingsByMeterId.get(meterId);
+
+        if (readings == null) {
+            throw new MeterReadingNotFoundException();
+        }
+
+        MeterReadingResponse reading = readings.get(readingId);
+
+        if (reading == null) {
+            throw new MeterReadingNotFoundException();
+        }
+
+        return reading;
+    }
 }

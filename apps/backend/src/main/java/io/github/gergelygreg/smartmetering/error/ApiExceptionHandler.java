@@ -6,6 +6,7 @@ import java.util.List;
 
 import io.github.gergelygreg.smartmetering.meter.MeterNotFoundException;
 import io.github.gergelygreg.smartmetering.meter.MeterSerialConflictException;
+import io.github.gergelygreg.smartmetering.meterreading.MeterReadingNotFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -120,5 +121,17 @@ public class ApiExceptionHandler {
                 .headers(exception.getHeaders())
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(problem);
+    }
+
+    @ExceptionHandler(MeterReadingNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleMeterReadingNotFound(
+            MeterReadingNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return domainProblem(
+                exception,
+                "READING_NOT_FOUND",
+                request
+        );
     }
 }
