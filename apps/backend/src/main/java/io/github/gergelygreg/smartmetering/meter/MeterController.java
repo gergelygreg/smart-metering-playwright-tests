@@ -20,9 +20,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeterController {
 
     private final MeterService meterService;
+    private final MeterLifecycleService meterLifecycleService;
 
-    public MeterController(MeterService meterService) {
+    public MeterController(
+            MeterService meterService,
+            MeterLifecycleService meterLifecycleService
+    ) {
         this.meterService = meterService;
+        this.meterLifecycleService = meterLifecycleService;
     }
 
     @PostMapping(
@@ -59,7 +64,7 @@ public class MeterController {
     public ResponseEntity<Void> deleteMeter(
             @PathVariable String id
     ) {
-        meterService.deleteMeter(id);
+        meterLifecycleService.deleteMeter(id);
 
         return ResponseEntity.noContent().build();
     }

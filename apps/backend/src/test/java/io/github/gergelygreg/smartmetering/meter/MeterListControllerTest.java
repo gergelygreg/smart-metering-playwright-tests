@@ -25,6 +25,9 @@ class MeterListControllerTest {
     @MockitoBean
     private MeterService meterService;
 
+    @MockitoBean
+    private MeterLifecycleService meterLifecycleService;
+
     @Test
     void getAllMetersReturnsEmptyJsonArray() throws Exception {
         when(meterService.getAllMeters()).thenReturn(List.of());

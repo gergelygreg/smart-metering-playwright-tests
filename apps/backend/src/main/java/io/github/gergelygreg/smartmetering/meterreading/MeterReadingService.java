@@ -83,4 +83,8 @@ public class MeterReadingService {
 
         return reading;
     }
+
+    public void deleteReadingsForMeter(String meterId) {
+        readingsByMeterId.remove(meterId);
+    }
 }

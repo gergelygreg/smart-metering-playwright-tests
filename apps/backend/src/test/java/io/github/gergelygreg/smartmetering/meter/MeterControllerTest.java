@@ -27,6 +27,9 @@ class MeterControllerTest {
     @MockitoBean
     private MeterService meterService;
 
+    @MockitoBean
+    private MeterLifecycleService meterLifecycleService;
+
     @Test
     void shouldReturnCreatedMeterAndLocationHeader() throws Exception {
         MeterResponse meter = new MeterResponse(

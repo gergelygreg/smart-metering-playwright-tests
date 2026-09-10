@@ -5,6 +5,7 @@ import io.github.gergelygreg.smartmetering.meter.CreateMeterRequest;
 import io.github.gergelygreg.smartmetering.meter.MeterController;
 import io.github.gergelygreg.smartmetering.meter.MeterResponse;
 import io.github.gergelygreg.smartmetering.meter.MeterService;
+import io.github.gergelygreg.smartmetering.meter.MeterLifecycleService;
 import io.github.gergelygreg.smartmetering.meter.MeterStatus;
 
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class MeterRequestBodyHandlerTest {
 
     @MockitoBean
     private MeterService meterService;
+
+    @MockitoBean
+    private MeterLifecycleService meterLifecycleService;
 
     private void assertInvalidBody(String json) throws Exception {
         mockMvc.perform(post("/api/meters")

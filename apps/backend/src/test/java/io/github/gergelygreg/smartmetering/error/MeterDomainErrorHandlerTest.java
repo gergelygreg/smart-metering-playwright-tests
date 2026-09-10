@@ -5,6 +5,7 @@ import io.github.gergelygreg.smartmetering.meter.MeterController;
 import io.github.gergelygreg.smartmetering.meter.MeterNotFoundException;
 import io.github.gergelygreg.smartmetering.meter.MeterSerialConflictException;
 import io.github.gergelygreg.smartmetering.meter.MeterService;
+import io.github.gergelygreg.smartmetering.meter.MeterLifecycleService;
 import io.github.gergelygreg.smartmetering.meter.MeterStatus;
 
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class MeterDomainErrorHandlerTest {
 
     @MockitoBean
     private MeterService meterService;
+
+    @MockitoBean
+    private MeterLifecycleService meterLifecycleService;
 
     @Test
     void unknownMeterReturnsStructuredNotFoundProblem() throws Exception {

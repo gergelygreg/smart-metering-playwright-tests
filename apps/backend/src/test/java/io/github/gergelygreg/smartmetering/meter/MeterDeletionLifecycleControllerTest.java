@@ -6,12 +6,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(MeterController.class)
 @Import(ApiExceptionHandler.class)
-class MeterDeletionControllerTest {
+class MeterDeletionLifecycleControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -31,16 +31,21 @@ class MeterDeletionControllerTest {
     private MeterLifecycleService meterLifecycleService;
 
     @Test
-    void deleteExistingMeterReturns204WithEmptyBody() throws Exception {
+    void delegatesMeterDeletionToLifecycleService()
+            throws Exception {
+
         mockMvc.perform(delete("/api/meters/meter-123"))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
-        verify(meterLifecycleService).deleteMeter("meter-123");
+        verify(meterLifecycleService)
+                .deleteMeter("meter-123");
+
+        verifyNoInteractions(meterService);
     }
 
     @Test
-    void deleteUnknownMeterReturnsStructuredNotFoundProblem()
+    void preservesStructuredNotFoundContractFromLifecycleService()
             throws Exception {
 
         doThrow(new MeterNotFoundException())
@@ -49,18 +54,21 @@ class MeterDeletionControllerTest {
 
         mockMvc.perform(delete("/api/meters/missing-meter"))
                 .andExpect(status().isNotFound())
-                .andExpect(content().contentTypeCompatibleWith(
-                        MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().contentType(
+                        "application/problem+json"))
                 .andExpect(jsonPath("$.type").value("about:blank"))
                 .andExpect(jsonPath("$.title").value("Not Found"))
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.detail").value(
                         "Meter not found."))
-                .andExpect(jsonPath("$.instance").value(
-                        "/api/meters/missing-meter"))
                 .andExpect(jsonPath("$.code").value(
-                        "METER_NOT_FOUND"));
+                        "METER_NOT_FOUND"))
+                .andExpect(jsonPath("$.instance").value(
+                        "/api/meters/missing-meter"));
 
-        verify(meterLifecycleService).deleteMeter("missing-meter");
+        verify(meterLifecycleService)
+                .deleteMeter("missing-meter");
+
+        verifyNoInteractions(meterService);
     }
 }

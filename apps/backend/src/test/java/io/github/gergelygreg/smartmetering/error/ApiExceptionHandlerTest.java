@@ -2,6 +2,7 @@ package io.github.gergelygreg.smartmetering.error;
 
 import io.github.gergelygreg.smartmetering.meter.MeterController;
 import io.github.gergelygreg.smartmetering.meter.MeterService;
+import io.github.gergelygreg.smartmetering.meter.MeterLifecycleService;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,9 @@ class ApiExceptionHandlerTest {
 
     @MockitoBean
     private MeterService meterService;
+
+    @MockitoBean
+    private MeterLifecycleService meterLifecycleService;
 
     @Test
     void blankFirmwareReturnsStructuredValidationProblem() throws Exception {
