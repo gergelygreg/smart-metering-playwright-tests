@@ -1,0 +1,152 @@
+<section class="page-shell">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">AMI operations</p>
+      <h1>Meter fleet</h1>
+      <p class="page-description">
+        Provision smart meters, inspect their state and open operational telemetry.
+      </p>
+    </div>
+
+    <div class="service-state" data-testid="service-health">
+      <span class="service-state__dot"></span>
+      API {{ healthStatus() }}
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="message message-error" role="alert" data-testid="fleet-error">
+      {{ error() }}
+    </div>
+  }
+
+  @if (success()) {
+    <div class="message message-success" role="status" data-testid="fleet-success">
+      {{ success() }}
+    </div>
+  }
+
+  <div class="content-grid">
+    <section class="panel create-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Provisioning</p>
+          <h2>Add meter</h2>
+        </div>
+      </div>
+
+      <form
+        class="form-stack"
+        [formGroup]="meterForm"
+        (ngSubmit)="createMeter()"
+        data-testid="meter-create-form"
+      >
+        <label>
+          <span>Serial number</span>
+          <input
+            type="text"
+            formControlName="serialNumber"
+            placeholder="e.g. ITRON-LAB-0001"
+            data-testid="serial-number-input"
+          />
+        </label>
+
+        <label>
+          <span>Status</span>
+          <select formControlName="status" data-testid="meter-status-select">
+            @for (status of meterStatuses; track status) {
+              <option [value]="status">{{ status }}</option>
+            }
+          </select>
+        </label>
+
+        <label>
+          <span>Firmware version</span>
+          <input
+            type="text"
+            formControlName="firmwareVersion"
+            placeholder="1.0.0"
+            data-testid="firmware-version-input"
+          />
+        </label>
+
+        <button
+          class="button button-primary"
+          type="submit"
+          [disabled]="meterForm.invalid || submitting()"
+          data-testid="create-meter-button"
+        >
+          {{ submitting() ? 'Creatingâ€¦' : 'Create meter' }}
+        </button>
+      </form>
+    </section>
+
+    <section class="panel fleet-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Inventory</p>
+          <h2>Registered meters</h2>
+        </div>
+        <button class="button button-secondary" type="button" (click)="loadMeters()">
+          Refresh
+        </button>
+      </div>
+
+      @if (loading()) {
+        <div class="empty-state" data-testid="meters-loading">Loading metersâ€¦</div>
+      } @else if (meters().length === 0) {
+        <div class="empty-state" data-testid="meters-empty">
+          No meters have been provisioned yet.
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table data-testid="meter-table">
+            <thead>
+              <tr>
+                <th>Serial number</th>
+                <th>Status</th>
+                <th>Firmware</th>
+                <th class="actions-column">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (meter of meters(); track meter.id) {
+                <tr [attr.data-testid]="'meter-row-' + meter.id">
+                  <td>
+                    <strong>{{ meter.serialNumber }}</strong>
+                    <span class="technical-id">{{ meter.id }}</span>
+                  </td>
+                  <td>
+                    <span [class]="statusClass(meter.status)">
+                      {{ meter.status }}
+                    </span>
+                  </td>
+                  <td>{{ meter.firmwareVersion }}</td>
+                  <td>
+                    <div class="table-actions">
+                      <a
+                        class="button button-secondary"
+                        [routerLink]="['/meters', meter.id]"
+                        [attr.data-testid]="'open-meter-' + meter.id"
+                      >
+                        Open
+                      </a>
+                      <button
+                        class="button button-danger"
+                        type="button"
+                        (click)="deleteMeter(meter)"
+                        [attr.data-testid]="'delete-meter-' + meter.id"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </div>
+</section>

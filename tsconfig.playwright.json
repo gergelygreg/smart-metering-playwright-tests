@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "apps/frontend",
+    "node_modules"
+  ]
+}

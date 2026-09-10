@@ -1,28 +1,36 @@
 {
-  "name": "smart-metering-playwright-tests",
-  "version": "1.0.0",
-  "description": "IoT and Smart Metering test automation lab using Angular, Java Spring Boot and Playwright TypeScript.",
-  "main": "index.js",
-  "scripts": {
-    "test": "playwright test",
-    "test:api": "playwright test --project=api",
-    "typecheck": "tsc --noEmit"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/gergelygreg/smart-metering-playwright-tests.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/gergelygreg/smart-metering-playwright-tests/issues"
-  },
-  "homepage": "https://github.com/gergelygreg/smart-metering-playwright-tests#readme",
-  "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "@types/node": "^26.4.1",
-    "typescript": "^7.0.2"
-  },
-  "private": true
+    "name":  "smart-metering-playwright-tests",
+    "version":  "1.0.0",
+    "description":  "IoT and Smart Metering test automation lab using Angular, Java Spring Boot and Playwright TypeScript.",
+    "main":  "index.js",
+    "scripts":  {
+                    "test":  "playwright test",
+                    "test:api":  "playwright test --project=api",
+                    "typecheck":  "tsc --noEmit -p tsconfig.playwright.json",
+                    "test:ui":  "playwright test --config=playwright.ui.config.ts",
+                    "test:ui:headed":  "playwright test --config=playwright.ui.config.ts --headed",
+                    "test:ui:debug":  "playwright test --config=playwright.ui.config.ts --debug",
+                    "frontend:start":  "npm --prefix apps/frontend start",
+                    "frontend:build":  "npm --prefix apps/frontend run build",
+                    "frontend:test":  "npm --prefix apps/frontend test -- --watch=false"
+                },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/gergelygreg/smart-metering-playwright-tests.git"
+                   },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "bugs":  {
+                 "url":  "https://github.com/gergelygreg/smart-metering-playwright-tests/issues"
+             },
+    "homepage":  "https://github.com/gergelygreg/smart-metering-playwright-tests#readme",
+    "devDependencies":  {
+                            "@playwright/test":  "^1.63.0",
+                            "@types/node":  "^26.4.1",
+                            "typescript":  "^7.0.2"
+                        },
+    "private":  true
 }

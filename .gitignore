@@ -8,3 +8,8 @@ target/
 .env.*
 !.env.example
 *.log
+apps/frontend/.angular/
+apps/frontend/dist/
+apps/frontend/node_modules/
+playwright-report-ui/
+.ui-phase-logs/

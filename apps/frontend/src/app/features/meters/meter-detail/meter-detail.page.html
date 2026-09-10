@@ -1,0 +1,263 @@
+<section class="page-shell">
+  <div class="page-heading">
+    <div>
+      <a class="back-link" routerLink="/meters">â† Meter fleet</a>
+      <p class="eyebrow">Operational view</p>
+      <h1 data-testid="meter-detail-heading">
+        {{ meter()?.serialNumber ?? 'Meter details' }}
+      </h1>
+      <p class="page-description">
+        Inspect telemetry, high-voltage alarms and persisted operational state.
+      </p>
+    </div>
+
+    @if (meter(); as currentMeter) {
+      <span
+        class="status-badge"
+        [class.status-online]="currentMeter.status === 'ONLINE'"
+        [class.status-offline]="currentMeter.status === 'OFFLINE'"
+        [class.status-fault]="currentMeter.status === 'FAULT'"
+        [class.status-maintenance]="currentMeter.status === 'MAINTENANCE'"
+        data-testid="meter-detail-status"
+      >
+        {{ currentMeter.status }}
+      </span>
+    }
+  </div>
+
+  @if (error()) {
+    <div class="message message-error" role="alert" data-testid="detail-error">
+      {{ error() }}
+    </div>
+  }
+
+  @if (success()) {
+    <div class="message message-success" role="status" data-testid="detail-success">
+      {{ success() }}
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="panel empty-state" data-testid="detail-loading">
+      Loading meter operational stateâ€¦
+    </div>
+  } @else if (meter(); as currentMeter) {
+    <section class="metrics-grid">
+      <article class="metric-card">
+        <span>Serial number</span>
+        <strong data-testid="meter-detail-serial">{{ currentMeter.serialNumber }}</strong>
+      </article>
+      <article class="metric-card">
+        <span>Firmware</span>
+        <strong data-testid="meter-detail-firmware">{{ currentMeter.firmwareVersion }}</strong>
+      </article>
+      <article class="metric-card">
+        <span>Readings</span>
+        <strong data-testid="reading-count">{{ readings().length }}</strong>
+      </article>
+      <article class="metric-card">
+        <span>Active alarms</span>
+        <strong data-testid="active-alarm-count">
+          {{ alarms().filter(alarm => alarm.status === 'ACTIVE').length }}
+        </strong>
+      </article>
+    </section>
+
+    <div class="detail-grid">
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Telemetry ingestion</p>
+            <h2>Add reading</h2>
+          </div>
+        </div>
+
+        <form
+          class="reading-form"
+          [formGroup]="readingForm"
+          (ngSubmit)="createReading()"
+          data-testid="reading-create-form"
+        >
+          <label class="field-wide">
+            <span>Timestamp</span>
+            <input
+              type="datetime-local"
+              formControlName="timestamp"
+              step="1"
+              data-testid="reading-timestamp"
+            />
+          </label>
+
+          <label>
+            <span>Voltage (V)</span>
+            <input
+              type="number"
+              formControlName="voltage"
+              step="0.1"
+              data-testid="reading-voltage"
+            />
+          </label>
+
+          <label>
+            <span>Current (A)</span>
+            <input
+              type="number"
+              formControlName="current"
+              step="0.1"
+              data-testid="reading-current"
+            />
+          </label>
+
+          <label>
+            <span>Active power (W)</span>
+            <input
+              type="number"
+              formControlName="activePower"
+              step="0.1"
+              data-testid="reading-active-power"
+            />
+          </label>
+
+          <label>
+            <span>Energy (kWh)</span>
+            <input
+              type="number"
+              formControlName="energyKwh"
+              step="0.1"
+              data-testid="reading-energy"
+            />
+          </label>
+
+          <button
+            class="button button-primary field-wide"
+            type="submit"
+            [disabled]="readingForm.invalid || submittingReading()"
+            data-testid="create-reading-button"
+          >
+            {{ submittingReading() ? 'Storingâ€¦' : 'Store reading' }}
+          </button>
+        </form>
+      </section>
+
+      <section class="panel danger-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Lifecycle</p>
+            <h2>Meter controls</h2>
+          </div>
+        </div>
+
+        <p>
+          Aggregate deletion removes this meter together with its readings and alarms.
+        </p>
+
+        <button
+          class="button button-danger"
+          type="button"
+          (click)="deleteMeter()"
+          data-testid="delete-meter-detail"
+        >
+          Delete meter
+        </button>
+      </section>
+    </div>
+
+    <section class="panel section-gap">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Telemetry history</p>
+          <h2>Meter readings</h2>
+        </div>
+      </div>
+
+      @if (readings().length === 0) {
+        <div class="empty-state" data-testid="readings-empty">
+          No telemetry has been received for this meter.
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table data-testid="reading-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Voltage</th>
+                <th>Current</th>
+                <th>Active power</th>
+                <th>Energy</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (reading of readings(); track reading.id) {
+                <tr [attr.data-testid]="'reading-row-' + reading.id">
+                  <td>
+                    {{ reading.timestamp }}
+                    <span class="technical-id">{{ reading.id }}</span>
+                  </td>
+                  <td>{{ reading.voltage }} V</td>
+                  <td>{{ reading.current }} A</td>
+                  <td>{{ reading.activePower }} W</td>
+                  <td>{{ reading.energyKwh }} kWh</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="panel section-gap">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Exception monitoring</p>
+          <h2>Alarms</h2>
+        </div>
+      </div>
+
+      @if (alarms().length === 0) {
+        <div class="empty-state" data-testid="alarms-empty">
+          No alarms are active or acknowledged for this meter.
+        </div>
+      } @else {
+        <div class="alarm-list" data-testid="alarm-list">
+          @for (alarm of alarms(); track alarm.id) {
+            <article class="alarm-card" [attr.data-testid]="'alarm-card-' + alarm.id">
+              <div>
+                <div class="alarm-card__title">
+                  <strong>{{ alarm.type }}</strong>
+                  <span
+                    class="status-badge"
+                    [class.status-fault]="alarm.status === 'ACTIVE'"
+                    [class.status-online]="alarm.status === 'ACKNOWLEDGED'"
+                    [attr.data-testid]="'alarm-status-' + alarm.id"
+                  >
+                    {{ alarm.status }}
+                  </span>
+                </div>
+                <p>
+                  Voltage {{ alarm.actualValue }} V exceeded threshold
+                  {{ alarm.threshold }} V.
+                </p>
+                <span class="technical-id">{{ alarm.id }}</span>
+              </div>
+
+              @if (alarm.status === 'ACTIVE') {
+                <button
+                  class="button button-primary"
+                  type="button"
+                  (click)="acknowledgeAlarm(alarm)"
+                  [attr.data-testid]="'acknowledge-alarm-' + alarm.id"
+                >
+                  Acknowledge
+                </button>
+              } @else {
+                <span class="ack-time">
+                  ACK {{ alarm.acknowledgedAt }}
+                </span>
+              }
+            </article>
+          }
+        </div>
+      }
+    </section>
+  }
+</section>
