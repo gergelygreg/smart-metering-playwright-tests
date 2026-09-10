@@ -1,5 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 
+import { AlarmApiClient } from '../api/AlarmApiClient.js';
 import { MeterApiClient } from '../api/MeterApiClient.js';
 import { ReadingApiClient } from '../api/ReadingApiClient.js';
 import { TrackedMeterApiClient } from './TrackedMeterApiClient.js';
@@ -7,21 +8,23 @@ import { TrackedMeterApiClient } from './TrackedMeterApiClient.js';
 type ApiFixtures = {
   meterApi: MeterApiClient;
   readingApi: ReadingApiClient;
+  alarmApi: AlarmApiClient;
 };
 
 export const test = base.extend<ApiFixtures>({
   meterApi: async ({ request }, use) => {
     const meterApi = new TrackedMeterApiClient(request);
-
     try {
       await use(meterApi);
     } finally {
       await meterApi.cleanupCreatedMeters();
     }
   },
-
   readingApi: async ({ request }, use) => {
     await use(new ReadingApiClient(request));
+  },
+  alarmApi: async ({ request }, use) => {
+    await use(new AlarmApiClient(request));
   },
 });
 

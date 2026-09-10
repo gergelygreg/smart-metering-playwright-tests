@@ -19,11 +19,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeterReadingController {
 
     private final MeterReadingService meterReadingService;
+    private final MeterReadingLifecycleService meterReadingLifecycleService;
 
     public MeterReadingController(
-            MeterReadingService meterReadingService
+            MeterReadingService meterReadingService,
+            MeterReadingLifecycleService meterReadingLifecycleService
     ) {
         this.meterReadingService = meterReadingService;
+        this.meterReadingLifecycleService = meterReadingLifecycleService;
     }
 
     @PostMapping(
@@ -35,7 +38,7 @@ public class MeterReadingController {
             @Valid @RequestBody CreateReadingRequest request
     ) {
         MeterReadingResponse reading =
-                meterReadingService.createReading(meterId, request);
+                meterReadingLifecycleService.createReading(meterId, request);
 
         URI location = URI.create(
                 "/api/meters/" +

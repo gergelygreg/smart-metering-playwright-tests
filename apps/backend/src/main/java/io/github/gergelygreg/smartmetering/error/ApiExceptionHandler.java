@@ -1,5 +1,6 @@
 package io.github.gergelygreg.smartmetering.error;
 
+import io.github.gergelygreg.smartmetering.alarm.AlarmNotFoundException;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.List;
@@ -133,5 +134,13 @@ public class ApiExceptionHandler {
                 "READING_NOT_FOUND",
                 request
         );
+    }
+
+    @ExceptionHandler(AlarmNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleAlarmNotFound(
+            AlarmNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return domainProblem(exception, "ALARM_NOT_FOUND", request);
     }
 }

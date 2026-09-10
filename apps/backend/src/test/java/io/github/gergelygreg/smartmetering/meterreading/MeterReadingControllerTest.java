@@ -33,6 +33,9 @@ class MeterReadingControllerTest {
     @MockitoBean
     private MeterReadingService meterReadingService;
 
+    @MockitoBean
+    private MeterReadingLifecycleService meterReadingLifecycleService;
+
     @Test
     void createReadingReturns201AndLocation() throws Exception {
         CreateReadingRequest request = new CreateReadingRequest(
@@ -53,7 +56,7 @@ class MeterReadingControllerTest {
                 request.energyKwh()
         );
 
-        when(meterReadingService.createReading(
+        when(meterReadingLifecycleService.createReading(
                 "meter-123",
                 request
         )).thenReturn(reading);
@@ -86,7 +89,7 @@ class MeterReadingControllerTest {
                 .andExpect(jsonPath("$.activePower").value(966.0))
                 .andExpect(jsonPath("$.energyKwh").value(12543.8));
 
-        verify(meterReadingService).createReading(
+        verify(meterReadingLifecycleService).createReading(
                 "meter-123",
                 request
         );
@@ -129,7 +132,7 @@ class MeterReadingControllerTest {
                 new BigDecimal("12543.8")
         );
 
-        when(meterReadingService.createReading(
+        when(meterReadingLifecycleService.createReading(
                 "missing-meter",
                 request
         )).thenThrow(new MeterNotFoundException());
@@ -155,7 +158,7 @@ class MeterReadingControllerTest {
                 .andExpect(jsonPath("$.instance").value(
                         "/api/meters/missing-meter/readings"));
 
-        verify(meterReadingService).createReading(
+        verify(meterReadingLifecycleService).createReading(
                 "missing-meter",
                 request
         );

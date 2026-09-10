@@ -1,75 +1,37 @@
 package io.github.gergelygreg.smartmetering.meter;
 
+import io.github.gergelygreg.smartmetering.alarm.AlarmService;
 import io.github.gergelygreg.smartmetering.meterreading.MeterReadingService;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 class MeterLifecycleServiceTest {
-
     @Test
-    void deletesMeterThenCleansUpItsReadings() {
-        MeterService meterService =
-                mock(MeterService.class);
-
-        MeterReadingService meterReadingService =
-                mock(MeterReadingService.class);
-
-        MeterLifecycleService lifecycleService =
-                new MeterLifecycleService(
-                        meterService,
-                        meterReadingService
-                );
-
-        lifecycleService.deleteMeter("meter-123");
-
-        InOrder order = inOrder(
-                meterService,
-                meterReadingService
-        );
-
-        order.verify(meterService)
-                .deleteMeter("meter-123");
-
-        order.verify(meterReadingService)
-                .deleteReadingsForMeter("meter-123");
+    void deletesMeterThenCleansUpReadingsAndAlarms() {
+        MeterService meterService = mock(MeterService.class);
+        MeterReadingService readingService = mock(MeterReadingService.class);
+        AlarmService alarmService = mock(AlarmService.class);
+        MeterLifecycleService lifecycle = new MeterLifecycleService(meterService, readingService, alarmService);
+        lifecycle.deleteMeter("meter-123");
+        InOrder order = inOrder(meterService, readingService, alarmService);
+        order.verify(meterService).deleteMeter("meter-123");
+        order.verify(readingService).deleteReadingsForMeter("meter-123");
+        order.verify(alarmService).deleteAlarmsForMeter("meter-123");
     }
 
     @Test
-    void doesNotCleanUpReadingsWhenMeterDeletionFails() {
-        MeterService meterService =
-                mock(MeterService.class);
-
-        MeterReadingService meterReadingService =
-                mock(MeterReadingService.class);
-
-        MeterLifecycleService lifecycleService =
-                new MeterLifecycleService(
-                        meterService,
-                        meterReadingService
-                );
-
-        doThrow(new MeterNotFoundException())
-                .when(meterService)
-                .deleteMeter("missing-meter");
-
-        assertThrows(
-                MeterNotFoundException.class,
-                () -> lifecycleService.deleteMeter(
-                        "missing-meter"
-                )
-        );
-
-        verify(meterService)
-                .deleteMeter("missing-meter");
-
-        verifyNoInteractions(meterReadingService);
+    void doesNotCleanUpChildrenWhenMeterDeletionFails() {
+        MeterService meterService = mock(MeterService.class);
+        MeterReadingService readingService = mock(MeterReadingService.class);
+        AlarmService alarmService = mock(AlarmService.class);
+        MeterLifecycleService lifecycle = new MeterLifecycleService(meterService, readingService, alarmService);
+        doThrow(new MeterNotFoundException()).when(meterService).deleteMeter("missing-meter");
+        assertThrows(MeterNotFoundException.class, () -> lifecycle.deleteMeter("missing-meter"));
+        verify(meterService).deleteMeter("missing-meter");
+        verifyNoInteractions(readingService, alarmService);
     }
 }

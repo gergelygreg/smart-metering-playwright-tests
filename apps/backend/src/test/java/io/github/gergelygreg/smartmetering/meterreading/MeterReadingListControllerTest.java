@@ -32,6 +32,9 @@ class MeterReadingListControllerTest {
     @MockitoBean
     private MeterReadingService meterReadingService;
 
+    @MockitoBean
+    private MeterReadingLifecycleService meterReadingLifecycleService;
+
     @Test
     void returnsEmptyReadingList() throws Exception {
         when(meterReadingService.getReadings("meter-123"))
