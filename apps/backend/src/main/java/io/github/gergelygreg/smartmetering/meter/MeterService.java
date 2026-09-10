@@ -1,60 +1,69 @@
 package io.github.gergelygreg.smartmetering.meter;
 
-import java.util.UUID;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MeterService {
 
-    private final ConcurrentMap<String, MeterResponse> metersBySerialNumber =
-            new ConcurrentHashMap<>();
+    private final MeterRepository meterRepository;
 
+    public MeterService(MeterRepository meterRepository) {
+        this.meterRepository = meterRepository;
+    }
+
+    @Transactional
     public MeterResponse createMeter(CreateMeterRequest request) {
-        MeterResponse meter = new MeterResponse(
+        if (meterRepository.existsBySerialNumber(request.serialNumber())) {
+            throw new MeterSerialConflictException();
+        }
+
+        MeterEntity entity = new MeterEntity(
                 UUID.randomUUID().toString(),
                 request.serialNumber(),
                 request.status(),
                 request.firmwareVersion()
         );
 
-        MeterResponse existing = metersBySerialNumber.putIfAbsent(
-                meter.serialNumber(),
-                meter
-        );
-
-        if (existing != null) {
+        try {
+            return toResponse(meterRepository.saveAndFlush(entity));
+        }
+        catch (DataIntegrityViolationException exception) {
             throw new MeterSerialConflictException();
         }
-
-        return meter;
     }
 
+    @Transactional(readOnly = true)
     public MeterResponse getMeterById(String id) {
-        return metersBySerialNumber.values()
-                .stream()
-                .filter(meter -> meter.id().equals(id))
-                .findFirst()
+        return meterRepository.findById(id)
+                .map(MeterService::toResponse)
                 .orElseThrow(MeterNotFoundException::new);
     }
 
+    @Transactional(readOnly = true)
     public List<MeterResponse> getAllMeters() {
-        return List.copyOf(metersBySerialNumber.values());
+        return meterRepository.findAll().stream()
+                .map(MeterService::toResponse)
+                .toList();
     }
 
+    @Transactional
     public void deleteMeter(String id) {
-        MeterResponse meter = getMeterById(id);
+        MeterEntity entity = meterRepository.findById(id)
+                .orElseThrow(MeterNotFoundException::new);
+        meterRepository.delete(entity);
+    }
 
-        boolean removed = metersBySerialNumber.remove(
-                meter.serialNumber(),
-                meter
+    private static MeterResponse toResponse(MeterEntity entity) {
+        return new MeterResponse(
+                entity.getId(),
+                entity.getSerialNumber(),
+                entity.getStatus(),
+                entity.getFirmwareVersion()
         );
-
-        if (!removed) {
-            throw new MeterNotFoundException();
-        }
     }
 }

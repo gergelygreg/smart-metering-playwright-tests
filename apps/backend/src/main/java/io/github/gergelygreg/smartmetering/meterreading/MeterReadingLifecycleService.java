@@ -3,6 +3,7 @@ package io.github.gergelygreg.smartmetering.meterreading;
 import io.github.gergelygreg.smartmetering.alarm.AlarmService;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MeterReadingLifecycleService {
@@ -18,6 +19,7 @@ public class MeterReadingLifecycleService {
         this.alarmService = alarmService;
     }
 
+    @Transactional
     public MeterReadingResponse createReading(String meterId, CreateReadingRequest request) {
         MeterReadingResponse reading = meterReadingService.createReading(meterId, request);
         alarmService.evaluateReading(reading);

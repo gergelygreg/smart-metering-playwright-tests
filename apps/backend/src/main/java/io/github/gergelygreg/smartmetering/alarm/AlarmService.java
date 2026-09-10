@@ -2,29 +2,34 @@ package io.github.gergelygreg.smartmetering.alarm;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import io.github.gergelygreg.smartmetering.meter.MeterService;
 import io.github.gergelygreg.smartmetering.meterreading.MeterReadingResponse;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AlarmService {
 
-    static final BigDecimal HIGH_VOLTAGE_THRESHOLD = new BigDecimal("253.0");
+    static final BigDecimal HIGH_VOLTAGE_THRESHOLD =
+            new BigDecimal("253.0");
 
     private final MeterService meterService;
-    private final ConcurrentMap<String, ConcurrentMap<String, AlarmResponse>> alarmsByMeterId =
-            new ConcurrentHashMap<>();
+    private final AlarmRepository alarmRepository;
 
-    public AlarmService(MeterService meterService) {
+    public AlarmService(
+            MeterService meterService,
+            AlarmRepository alarmRepository
+    ) {
         this.meterService = meterService;
+        this.alarmRepository = alarmRepository;
     }
 
+    @Transactional
     public List<AlarmResponse> evaluateReading(MeterReadingResponse reading) {
         meterService.getMeterById(reading.meterId());
 
@@ -32,56 +37,78 @@ public class AlarmService {
             return List.of();
         }
 
-        AlarmResponse alarm = new AlarmResponse(
+        AlarmEntity entity = new AlarmEntity(
                 UUID.randomUUID().toString(),
                 reading.meterId(),
                 reading.id(),
                 AlarmType.HIGH_VOLTAGE,
                 AlarmSeverity.WARNING,
                 AlarmStatus.ACTIVE,
-                reading.timestamp(),
+                reading.timestamp().truncatedTo(ChronoUnit.MICROS),
                 reading.voltage(),
                 HIGH_VOLTAGE_THRESHOLD,
                 null
         );
 
-        alarmsByMeterId
-                .computeIfAbsent(reading.meterId(), ignored -> new ConcurrentHashMap<>())
-                .put(alarm.id(), alarm);
-
-        return List.of(alarm);
+        return List.of(toResponse(alarmRepository.saveAndFlush(entity)));
     }
 
+    @Transactional(readOnly = true)
     public List<AlarmResponse> getAlarms(String meterId) {
         meterService.getMeterById(meterId);
-        ConcurrentMap<String, AlarmResponse> alarms = alarmsByMeterId.get(meterId);
-        return alarms == null ? List.of() : List.copyOf(alarms.values());
+
+        return alarmRepository.findAllByMeterId(meterId)
+                .stream()
+                .map(AlarmService::toResponse)
+                .toList();
     }
 
+    @Transactional(readOnly = true)
     public AlarmResponse getAlarm(String meterId, String alarmId) {
         meterService.getMeterById(meterId);
-        ConcurrentMap<String, AlarmResponse> alarms = alarmsByMeterId.get(meterId);
-        if (alarms == null) { throw new AlarmNotFoundException(); }
-        AlarmResponse alarm = alarms.get(alarmId);
-        if (alarm == null) { throw new AlarmNotFoundException(); }
-        return alarm;
+
+        return alarmRepository.findByIdAndMeterId(alarmId, meterId)
+                .map(AlarmService::toResponse)
+                .orElseThrow(AlarmNotFoundException::new);
     }
 
+    @Transactional
     public AlarmResponse acknowledgeAlarm(String meterId, String alarmId) {
-        AlarmResponse existing = getAlarm(meterId, alarmId);
-        if (existing.status() == AlarmStatus.ACKNOWLEDGED) { return existing; }
+        meterService.getMeterById(meterId);
 
-        AlarmResponse acknowledged = new AlarmResponse(
-                existing.id(), existing.meterId(), existing.sourceReadingId(),
-                existing.type(), existing.severity(), AlarmStatus.ACKNOWLEDGED,
-                existing.detectedAt(), existing.actualValue(), existing.threshold(), Instant.now()
-        );
+        AlarmEntity entity = alarmRepository
+                .findByIdAndMeterId(alarmId, meterId)
+                .orElseThrow(AlarmNotFoundException::new);
 
-        alarmsByMeterId.get(meterId).replace(alarmId, acknowledged);
-        return acknowledged;
+        entity.acknowledge(Instant.now().truncatedTo(ChronoUnit.MICROS));
+        return toResponse(alarmRepository.saveAndFlush(entity));
     }
 
+    @Transactional
     public void deleteAlarmsForMeter(String meterId) {
-        alarmsByMeterId.remove(meterId);
+        alarmRepository.deleteByMeterId(meterId);
+    }
+
+    private static BigDecimal normalizeDecimal(BigDecimal value) {
+        BigDecimal normalized = value.stripTrailingZeros();
+
+        return normalized.scale() < 0
+                ? normalized.setScale(0)
+                : normalized;
+    }
+
+    private static AlarmResponse toResponse(AlarmEntity entity) {
+        return new AlarmResponse(
+                entity.getId(),
+                entity.getMeterId(),
+                entity.getSourceReadingId(),
+                entity.getType(),
+                entity.getSeverity(),
+                entity.getStatus(),
+                entity.getDetectedAt(),
+                normalizeDecimal(entity.getActualValue()),
+                normalizeDecimal(entity.getThreshold()),
+                entity.getAcknowledgedAt()
+        );
     }
 }
