@@ -2,6 +2,8 @@
   "extends": "./tsconfig.json",
   "exclude": [
     "apps/frontend",
+    "apps/device-simulator",
+    "apps/mqtt-ingestion",
     "node_modules"
   ]
 }

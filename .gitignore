@@ -17,3 +17,9 @@ playwright-report-ui/
 .docker-runtime/
 .docker-ci-artifacts/
 !.env.docker.example
+apps/device-simulator/node_modules/
+apps/device-simulator/dist/
+apps/mqtt-ingestion/node_modules/
+apps/mqtt-ingestion/dist/
+playwright-report-mqtt/
+.mqtt-phase-artifacts/

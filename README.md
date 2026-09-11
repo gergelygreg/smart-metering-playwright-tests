@@ -43,3 +43,32 @@ Run the full local Docker acceptance with:
 GitHub Actions runs backend, frontend, API, browser and Docker integration quality gates.
 Validated `main` and version-tag builds are continuously delivered to GitHub Container
 Registry as separate backend and frontend images. See `docs/docker-ci-cd.md`.
+## MQTT smart-meter simulation
+
+The lab includes a containerized IoT telemetry path:
+
+```text
+Device Simulator -> Mosquitto -> MQTT Ingestion -> Spring Boot -> PostgreSQL -> Angular
+```
+
+The simulator supports normal, high-voltage and mixed profiles, publishes MQTT QoS 1
+telemetry with message IDs, retained online/offline status and Last Will handling.
+
+The MQTT ingestion adapter validates payloads with Zod, deduplicates QoS 1 message IDs
+and reuses the existing REST/domain layer. High-voltage device telemetry therefore
+creates the same persisted alarms that are visible through the Angular operations UI.
+
+Run:
+
+```powershell
+.\scripts\start-full-stack.ps1
+.\scripts\run-device-simulator.ps1 -Profile mixed -Count 8 -IntervalMs 500
+```
+
+Full acceptance:
+
+```powershell
+.\scripts\verify-mqtt-phase.ps1
+```
+
+See `docs/mqtt-device-simulator.md`.

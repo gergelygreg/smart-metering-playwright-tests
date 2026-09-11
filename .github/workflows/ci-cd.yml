@@ -120,13 +120,51 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  mqtt-components:
+    name: MQTT Adapter / Device Simulator Unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/mqtt-ingestion/package-lock.json
+            apps/device-simulator/package-lock.json
+
+      - name: Use deterministic npm version
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: MQTT ingestion install / typecheck / unit / build
+        working-directory: apps/mqtt-ingestion
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Device simulator install / typecheck / unit / build
+        working-directory: apps/device-simulator
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
   docker-integration:
-    name: Docker Full Stack - API + UI E2E
+    name: Docker Full Stack - REST / MQTT / UI E2E
     runs-on: ubuntu-latest
     needs:
       - backend
       - frontend
-    timeout-minutes: 30
+      - mqtt-components
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -149,12 +187,29 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Validate Docker Compose model
-        run: docker compose -f docker-compose.full.yml config --quiet
+        run: docker compose -f docker-compose.full.yml --profile simulator config --quiet
 
       - name: Build production Docker images
-        run: docker compose -f docker-compose.full.yml build --pull
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Start complete Docker stack
+          for service in \
+            backend \
+            frontend \
+            mqtt-ingestion \
+            device-simulator
+          do
+            echo "Building Docker service: ${service}"
+            docker compose \
+              -f docker-compose.full.yml \
+              --profile simulator \
+              build \
+              --pull \
+              "${service}"
+          done
+
+      - name: Start MQTT-enabled full stack
         run: docker compose -f docker-compose.full.yml up -d
 
       - name: Wait for full-stack readiness
@@ -182,49 +237,66 @@ jobs:
           wait_for_url "http://127.0.0.1:18080/api/health" "backend"
           wait_for_url "http://127.0.0.1:8088/healthz" "frontend"
           wait_for_url "http://127.0.0.1:8088/api/health" "frontend reverse proxy"
+          wait_for_url "http://127.0.0.1:18090/health" "mqtt ingestion"
+
+          docker inspect \
+            --format '{{.State.Status}}/{{.State.Health.Status}}' \
+            smart-metering-full-mqtt
 
           docker compose -f docker-compose.full.yml ps
 
-      - name: Playwright API contracts against Docker stack
+      - name: REST API contracts against Docker stack
         env:
           API_BASE_URL: http://127.0.0.1:18080
         run: npm run test:api
 
-      - name: Preserve API report
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p .ci-artifacts
-          if [ -d playwright-report ]; then
-            cp -R playwright-report .ci-artifacts/playwright-report-api
-          fi
+      - name: MQTT telemetry integration contracts
+        env:
+          MQTT_API_BASE_URL: http://127.0.0.1:18080
+          MQTT_URL: mqtt://127.0.0.1:1883
+        run: npm run test:mqtt
 
-      - name: Playwright browser E2E against Docker stack
+      - name: Browser E2E including MQTT device flow
         env:
           UI_BASE_URL: http://127.0.0.1:8088
           UI_API_BASE_URL: http://127.0.0.1:18080
+          MQTT_URL: mqtt://127.0.0.1:1883
         run: npm run test:ui
 
-      - name: Preserve UI report
-        if: always()
+      - name: Real device simulator container acceptance
         shell: bash
         run: |
-          mkdir -p .ci-artifacts
-          if [ -d playwright-report-ui ]; then
-            cp -R playwright-report-ui .ci-artifacts/playwright-report-ui
-          fi
-          if [ -d test-results ]; then
-            cp -R test-results .ci-artifacts/test-results
-          fi
+          set -euo pipefail
 
-      - name: Verify containers stayed healthy
+          serial="CI-SIM-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          docker compose \
+            -f docker-compose.full.yml \
+            --profile simulator \
+            run \
+            --rm \
+            -e "SIM_SERIAL_NUMBER=${serial}" \
+            -e "SIM_PROFILE=mixed" \
+            -e "SIM_COUNT=4" \
+            -e "SIM_INTERVAL_MS=100" \
+            device-simulator
+
+          SIM_SERIAL_NUMBER="${serial}" \
+          EXPECTED_READINGS=4 \
+          EXPECT_ALARM=true \
+          API_BASE_URL=http://127.0.0.1:18080 \
+          node scripts/assert-simulator-output.mjs
+
+      - name: Verify all long-running containers stayed healthy
         shell: bash
         run: |
           set -euo pipefail
 
           for container in \
             smart-metering-full-postgres \
+            smart-metering-full-mqtt \
             smart-metering-full-backend \
+            smart-metering-full-mqtt-ingestion \
             smart-metering-full-frontend
           do
             state="$(docker inspect --format '{{.State.Status}}/{{.State.Health.Status}}' "$container")"
@@ -232,20 +304,37 @@ jobs:
             test "$state" = "running/healthy"
           done
 
-      - name: Capture Docker state and logs
+      - name: Capture reports and Docker diagnostics
         if: always()
         shell: bash
         run: |
           mkdir -p .ci-artifacts
-          docker compose -f docker-compose.full.yml ps > .ci-artifacts/docker-compose-ps.txt || true
-          docker compose -f docker-compose.full.yml logs --no-color > .ci-artifacts/docker-compose.log || true
-          docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.Size}}' > .ci-artifacts/docker-images.txt || true
 
-      - name: Upload Docker / Playwright artifacts
+          for report in \
+            playwright-report \
+            playwright-report-mqtt \
+            playwright-report-ui \
+            test-results
+          do
+            if [ -d "$report" ]; then
+              cp -R "$report" ".ci-artifacts/$report"
+            fi
+          done
+
+          docker compose -f docker-compose.full.yml ps \
+            > .ci-artifacts/docker-compose-ps.txt || true
+
+          docker compose -f docker-compose.full.yml logs --no-color \
+            > .ci-artifacts/docker-compose.log || true
+
+          curl --silent http://127.0.0.1:18090/health \
+            > .ci-artifacts/mqtt-ingestion-health.json || true
+
+      - name: Upload Docker / MQTT / Playwright artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: docker-integration-artifacts
+          name: docker-mqtt-integration-artifacts
           path: .ci-artifacts/
           if-no-files-found: ignore
           retention-days: 14
@@ -259,7 +348,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - docker-integration
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     if: >-
       ${{
@@ -319,6 +408,32 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
 
+      - name: MQTT ingestion image metadata
+        id: ingestion-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-mqtt-ingestion
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Device simulator image metadata
+        id: simulator-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-meter-device-simulator
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
       - name: Build and publish backend image
         uses: docker/build-push-action@v7
         with:
@@ -347,19 +462,57 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Build and publish MQTT ingestion image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/mqtt-ingestion
+          file: ./apps/mqtt-ingestion/Dockerfile
+          push: true
+          pull: true
+          tags: ${{ steps.ingestion-meta.outputs.tags }}
+          labels: ${{ steps.ingestion-meta.outputs.labels }}
+          cache-from: type=gha,scope=mqtt-ingestion
+          cache-to: type=gha,mode=max,scope=mqtt-ingestion
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and publish device simulator image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/device-simulator
+          file: ./apps/device-simulator/Dockerfile
+          push: true
+          pull: true
+          tags: ${{ steps.simulator-meta.outputs.tags }}
+          labels: ${{ steps.simulator-meta.outputs.labels }}
+          cache-from: type=gha,scope=device-simulator
+          cache-to: type=gha,mode=max,scope=device-simulator
+          provenance: mode=max
+          sbom: true
+
       - name: Publish summary
         shell: bash
         run: |
           {
-            echo "## Published container images"
+            echo "## Published smart-metering images"
             echo
-            echo "Backend:"
+            echo "### Backend"
             echo '```text'
             echo "${{ steps.backend-meta.outputs.tags }}"
             echo '```'
             echo
-            echo "Frontend:"
+            echo "### Frontend"
             echo '```text'
             echo "${{ steps.frontend-meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "### MQTT ingestion"
+            echo '```text'
+            echo "${{ steps.ingestion-meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "### Device simulator"
+            echo '```text'
+            echo "${{ steps.simulator-meta.outputs.tags }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -12,7 +12,9 @@
                     "test:ui:debug":  "playwright test --config=playwright.ui.config.ts --debug",
                     "frontend:start":  "npm --prefix apps/frontend start",
                     "frontend:build":  "npm --prefix apps/frontend run build",
-                    "frontend:test":  "npm --prefix apps/frontend test -- --watch=false"
+                    "frontend:test":  "npm --prefix apps/frontend test -- --watch=false",
+                    "test:mqtt":  "playwright test --config=playwright.mqtt.config.ts",
+                    "simulator:run":  "powershell -ExecutionPolicy Bypass -File ./scripts/run-device-simulator.ps1"
                 },
     "repository":  {
                        "type":  "git",
@@ -30,6 +32,7 @@
     "devDependencies":  {
                             "@playwright/test":  "^1.63.0",
                             "@types/node":  "^26.4.1",
+                            "mqtt":  "^5.15.1",
                             "typescript":  "^7.0.2"
                         },
     "private":  true

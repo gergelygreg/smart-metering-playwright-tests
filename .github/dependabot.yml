@@ -25,6 +25,22 @@ updates:
       - dependencies
       - frontend
 
+  - package-ecosystem: npm
+    directory: /apps/mqtt-ingestion
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - mqtt
+
+  - package-ecosystem: npm
+    directory: /apps/device-simulator
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - mqtt
+
   - package-ecosystem: maven
     directory: /apps/backend
     schedule:
@@ -43,6 +59,22 @@ updates:
 
   - package-ecosystem: docker
     directory: /apps/frontend
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /apps/mqtt-ingestion
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /apps/device-simulator
     schedule:
       interval: weekly
     labels:

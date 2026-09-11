@@ -25,6 +25,26 @@ services:
     networks:
       - smart-metering
 
+  mqtt-broker:
+    image: eclipse-mosquitto:2.1.2-alpine
+    container_name: smart-metering-full-mqtt
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "${MQTT_HOST_PORT:-1883}:1883"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 5 >/dev/null 2>&1"
+        ]
+      interval: 3s
+      timeout: 6s
+      retries: 20
+      start_period: 5s
+    networks:
+      - smart-metering
+
   backend:
     image: smart-metering-api:${IMAGE_TAG:-local}
     container_name: smart-metering-full-backend
@@ -61,6 +81,37 @@ services:
     networks:
       - smart-metering
 
+  mqtt-ingestion:
+    image: smart-metering-mqtt-ingestion:${IMAGE_TAG:-local}
+    container_name: smart-metering-full-mqtt-ingestion
+    build:
+      context: ./apps/mqtt-ingestion
+      dockerfile: Dockerfile
+    environment:
+      MQTT_URL: mqtt://mqtt-broker:1883
+      API_BASE_URL: http://backend:8080
+      HEALTH_PORT: 8090
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    ports:
+      - "${MQTT_INGESTION_HOST_PORT:-18090}:8090"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8090/health >/dev/null 2>&1"
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    init: true
+    networks:
+      - smart-metering
+
   frontend:
     image: smart-metering-ui:${IMAGE_TAG:-local}
     container_name: smart-metering-full-frontend
@@ -83,6 +134,32 @@ services:
       retries: 30
       start_period: 5s
     init: true
+    networks:
+      - smart-metering
+
+  device-simulator:
+    image: smart-meter-device-simulator:${IMAGE_TAG:-local}
+    build:
+      context: ./apps/device-simulator
+      dockerfile: Dockerfile
+    profiles:
+      - simulator
+    environment:
+      MQTT_URL: mqtt://mqtt-broker:1883
+      API_BASE_URL: http://backend:8080
+      SIM_SERIAL_NUMBER: ${SIM_SERIAL_NUMBER:-SIM-DOCKER-0001}
+      SIM_FIRMWARE_VERSION: ${SIM_FIRMWARE_VERSION:-sim-1.0.0}
+      SIM_PROFILE: ${SIM_PROFILE:-normal}
+      SIM_COUNT: ${SIM_COUNT:-10}
+      SIM_INTERVAL_MS: ${SIM_INTERVAL_MS:-1000}
+      SIM_INITIAL_ENERGY_KWH: ${SIM_INITIAL_ENERGY_KWH:-12500}
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      mqtt-ingestion:
+        condition: service_healthy
     networks:
       - smart-metering
 

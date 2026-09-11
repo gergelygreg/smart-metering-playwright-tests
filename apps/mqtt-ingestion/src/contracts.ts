@@ -1,0 +1,37 @@
+import { z } from 'zod';
+
+export const telemetrySchema = z.object({
+  messageId: z.string().uuid(),
+  meterId: z.string().uuid(),
+  serialNumber: z.string().min(1).max(64),
+  firmwareVersion: z.string().min(1).max(64),
+  timestamp: z.string().datetime({ offset: true }),
+  voltage: z.number().positive(),
+  current: z.number().nonnegative(),
+  activePower: z.number(),
+  energyKwh: z.number().nonnegative(),
+  sequence: z.number().int().positive(),
+  source: z.literal('smart-meter-device-simulator'),
+});
+
+export type TelemetryMessage = z.infer<typeof telemetrySchema>;
+
+export interface ReadingRequest {
+  timestamp: string;
+  voltage: number;
+  current: number;
+  activePower: number;
+  energyKwh: number;
+}
+
+export function toReadingRequest(
+  telemetry: TelemetryMessage,
+): ReadingRequest {
+  return {
+    timestamp: telemetry.timestamp,
+    voltage: telemetry.voltage,
+    current: telemetry.current,
+    activePower: telemetry.activePower,
+    energyKwh: telemetry.energyKwh,
+  };
+}
