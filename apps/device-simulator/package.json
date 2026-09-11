@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "mqtt": "5.15.1"
+    "mqtt": "5.15.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
