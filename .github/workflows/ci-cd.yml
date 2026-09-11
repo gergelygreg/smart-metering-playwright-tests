@@ -1,0 +1,365 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish_images:
+        description: "Publish validated images to GitHub Container Registry"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ci-cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.23.2"
+  NPM_VERSION: "11.6.0"
+
+jobs:
+  backend:
+    name: Backend - Maven / JPA / Flyway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version-file: .java-version
+          cache: maven
+          cache-dependency-path: apps/backend/pom.xml
+
+      - name: Make Maven wrapper executable
+        working-directory: apps/backend
+        run: chmod +x mvnw
+
+      - name: Backend regression
+        working-directory: apps/backend
+        run: ./mvnw -B -ntp clean verify
+
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports
+          path: apps/backend/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: TypeScript / Angular / Unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/frontend/package-lock.json
+
+      - name: Use deterministic npm version
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install root automation dependencies
+        run: npm ci
+
+      - name: Root TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Playwright unit tests
+        run: npx playwright test --project=unit
+
+      - name: Install Angular dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Angular unit tests
+        working-directory: apps/frontend
+        run: npm test -- --watch=false
+
+      - name: Angular production build
+        working-directory: apps/frontend
+        run: npm run build
+
+      - name: Upload Angular build
+        uses: actions/upload-artifact@v7
+        with:
+          name: angular-dist
+          path: apps/frontend/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-unit-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  docker-integration:
+    name: Docker Full Stack - API + UI E2E
+    runs-on: ubuntu-latest
+    needs:
+      - backend
+      - frontend
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use deterministic npm version
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install automation dependencies
+        run: npm ci
+
+      - name: Install Chromium and Linux browser dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate Docker Compose model
+        run: docker compose -f docker-compose.full.yml config --quiet
+
+      - name: Build production Docker images
+        run: docker compose -f docker-compose.full.yml build --pull
+
+      - name: Start complete Docker stack
+        run: docker compose -f docker-compose.full.yml up -d
+
+      - name: Wait for full-stack readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_url() {
+            local url="$1"
+            local name="$2"
+
+            for attempt in $(seq 1 90); do
+              if curl --fail --silent --show-error "$url" >/dev/null; then
+                echo "$name is ready"
+                return 0
+              fi
+
+              sleep 2
+            done
+
+            echo "$name did not become ready: $url" >&2
+            return 1
+          }
+
+          wait_for_url "http://127.0.0.1:18080/api/health" "backend"
+          wait_for_url "http://127.0.0.1:8088/healthz" "frontend"
+          wait_for_url "http://127.0.0.1:8088/api/health" "frontend reverse proxy"
+
+          docker compose -f docker-compose.full.yml ps
+
+      - name: Playwright API contracts against Docker stack
+        env:
+          API_BASE_URL: http://127.0.0.1:18080
+        run: npm run test:api
+
+      - name: Preserve API report
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-artifacts
+          if [ -d playwright-report ]; then
+            cp -R playwright-report .ci-artifacts/playwright-report-api
+          fi
+
+      - name: Playwright browser E2E against Docker stack
+        env:
+          UI_BASE_URL: http://127.0.0.1:8088
+          UI_API_BASE_URL: http://127.0.0.1:18080
+        run: npm run test:ui
+
+      - name: Preserve UI report
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-artifacts
+          if [ -d playwright-report-ui ]; then
+            cp -R playwright-report-ui .ci-artifacts/playwright-report-ui
+          fi
+          if [ -d test-results ]; then
+            cp -R test-results .ci-artifacts/test-results
+          fi
+
+      - name: Verify containers stayed healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for container in \
+            smart-metering-full-postgres \
+            smart-metering-full-backend \
+            smart-metering-full-frontend
+          do
+            state="$(docker inspect --format '{{.State.Status}}/{{.State.Health.Status}}' "$container")"
+            echo "$container -> $state"
+            test "$state" = "running/healthy"
+          done
+
+      - name: Capture Docker state and logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-artifacts
+          docker compose -f docker-compose.full.yml ps > .ci-artifacts/docker-compose-ps.txt || true
+          docker compose -f docker-compose.full.yml logs --no-color > .ci-artifacts/docker-compose.log || true
+          docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.Size}}' > .ci-artifacts/docker-images.txt || true
+
+      - name: Upload Docker / Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-integration-artifacts
+          path: .ci-artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Tear down Docker stack
+        if: always()
+        run: docker compose -f docker-compose.full.yml down --volumes --remove-orphans
+
+  publish-images:
+    name: Publish validated images to GHCR
+    runs-on: ubuntu-latest
+    needs:
+      - docker-integration
+    timeout-minutes: 30
+
+    if: >-
+      ${{
+        (github.event_name == 'push' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish_images)
+      }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Normalize GHCR owner
+        id: repository
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend image metadata
+        id: backend-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-api
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Frontend image metadata
+        id: frontend-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-ui
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and publish backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/backend
+          file: ./apps/backend/Dockerfile
+          push: true
+          pull: true
+          tags: ${{ steps.backend-meta.outputs.tags }}
+          labels: ${{ steps.backend-meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          provenance: mode=max
+          sbom: true
+
+      - name: Build and publish frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/frontend
+          file: ./apps/frontend/Dockerfile
+          push: true
+          pull: true
+          tags: ${{ steps.frontend-meta.outputs.tags }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          provenance: mode=max
+          sbom: true
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          {
+            echo "## Published container images"
+            echo
+            echo "Backend:"
+            echo '```text'
+            echo "${{ steps.backend-meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Frontend:"
+            echo '```text'
+            echo "${{ steps.frontend-meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

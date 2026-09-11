@@ -13,3 +13,7 @@ apps/frontend/dist/
 apps/frontend/node_modules/
 playwright-report-ui/
 .ui-phase-logs/
+.env.docker
+.docker-runtime/
+.docker-ci-artifacts/
+!.env.docker.example
