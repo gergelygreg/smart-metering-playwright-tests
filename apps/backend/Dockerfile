@@ -11,7 +11,7 @@ COPY src ./src
 RUN mvn -B -ntp -DskipTests package \
     && cp "$(find target -maxdepth 1 -type f -name 'smart-metering-api-*.jar' ! -name '*.original' | head -n 1)" /workspace/app.jar
 
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 
 RUN apk add --no-cache curl \
     && addgroup -S smartmetering \
