@@ -250,6 +250,7 @@ jobs:
           name: kubernetes-kind-artifacts
           path: .k8s-runtime/
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
   publish-images:
     name: Publish validated images to GHCR
