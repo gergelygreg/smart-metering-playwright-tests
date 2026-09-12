@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: __JOB_NAME__
+  namespace: smart-metering
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: device-simulator
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: device-simulator
+          image: smart-meter-device-simulator:k8s-local
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MQTT_URL
+              value: mqtt://mqtt-broker:1883
+            - name: API_BASE_URL
+              value: http://backend:8080
+            - name: SIM_SERIAL_NUMBER
+              value: "__SERIAL__"
+            - name: SIM_FIRMWARE_VERSION
+              value: sim-1.0.0
+            - name: SIM_PROFILE
+              value: "__PROFILE__"
+            - name: SIM_COUNT
+              value: "__COUNT__"
+            - name: SIM_INTERVAL_MS
+              value: "__INTERVAL_MS__"
+            - name: SIM_INITIAL_ENERGY_KWH
+              value: "12500"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

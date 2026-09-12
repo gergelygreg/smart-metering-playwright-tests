@@ -27,3 +27,5 @@ apps/kafka-event-service/node_modules/
 apps/kafka-event-service/dist/
 playwright-report-kafka/
 .kafka-phase-artifacts/
+.tools/k8s/
+.k8s-runtime/

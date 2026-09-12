@@ -97,3 +97,21 @@ Run the complete acceptance with:
 ```
 
 See `docs/kafka-event-pipeline.md`.
+## Kubernetes orchestration
+
+The full smart-metering platform can run on a real Kubernetes control plane through
+kind and Kubernetes 1.37.
+
+The phase includes Deployments, StatefulSets, Services, ConfigMaps, runtime Secrets,
+startup/readiness/liveness probes, PVCs and a smart-meter simulator Job.
+
+Local acceptance:
+
+```powershell
+.\scripts\verify-kubernetes-phase.ps1
+```
+
+The acceptance reruns the 53 REST/MQTT/Kafka/UI integration tests against Kubernetes
+and verifies pod self-healing, replica scaling and PVC binding.
+
+See `docs/kubernetes-orchestration.md`.

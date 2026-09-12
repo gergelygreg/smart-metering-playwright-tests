@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  namespace: smart-metering
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-init
+          image: apache/kafka:4.3.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              for attempt in $(seq 1 60); do
+                if /opt/kafka/bin/kafka-topics.sh                   --bootstrap-server kafka:9092                   --list >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 2
+              done
+
+              for topic in                 smart-metering.telemetry.received.v1                 smart-metering.reading.persisted.v1                 smart-metering.alarm.created.v1
+              do
+                /opt/kafka/bin/kafka-topics.sh                   --bootstrap-server kafka:9092                   --create                   --if-not-exists                   --topic "${topic}"                   --partitions 3                   --replication-factor 1                   --config retention.ms=86400000
+              done
+
+              /opt/kafka/bin/kafka-topics.sh                 --bootstrap-server kafka:9092                 --list

@@ -213,11 +213,49 @@ jobs:
       - if: always()
         run: docker compose -f docker-compose.full.yml down --volumes --remove-orphans
 
+  kubernetes-integration:
+    name: Kubernetes Kind - Orchestration / E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs:
+      - docker-integration
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use deterministic npm version
+        run: npm install --global npm@${NPM_VERSION}
+
+      - name: Install automation dependencies
+        run: npm ci
+
+      - name: Install Chromium and Linux browser dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Kubernetes kind acceptance
+        run: bash scripts/k8s/ci-kind-acceptance.sh
+
+      - name: Upload Kubernetes diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kubernetes-kind-artifacts
+          path: .k8s-runtime/
+          if-no-files-found: ignore
+          retention-days: 14
   publish-images:
     name: Publish validated images to GHCR
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    needs: [docker-integration]
+    needs: [docker-integration, kubernetes-integration]
     if: >-
       ${{
         (github.event_name == 'push' &&
