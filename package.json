@@ -30,7 +30,7 @@
     "homepage": "https://github.com/gergelygreg/smart-metering-playwright-tests#readme",
     "devDependencies": {
         "@playwright/test": "^1.63.0",
-        "@types/node": "^26.4.1",
+        "@types/node": "^26.5.0",
         "kafkajs": "^2.2.4",
         "mqtt": "^5.15.1",
         "typescript": "^7.0.2"
