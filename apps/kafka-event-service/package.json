@@ -1,5 +1,5 @@
 {
-  "name": "smart-metering-mqtt-ingestion",
+  "name": "smart-metering-kafka-event-service",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "kafkajs": "^2.2.4",
-    "mqtt": "5.15.1",
+    "kafkajs": "2.2.4",
     "zod": "4.6.1"
   },
   "devDependencies": {

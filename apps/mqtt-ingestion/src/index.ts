@@ -1,16 +1,25 @@
 import { connect } from 'mqtt';
-import { HttpBackendClient } from './backend-client.js';
 import { startHealthServer } from './health-server.js';
+import { KafkaTelemetryPublisher } from './kafka-publisher.js';
 import { TelemetryHandler } from './telemetry-handler.js';
 
-const mqttUrl = process.env.MQTT_URL ?? 'mqtt://127.0.0.1:1883';
-const apiBaseUrl = process.env.API_BASE_URL ?? 'http://127.0.0.1:18080';
+const mqttUrl =
+  process.env.MQTT_URL ?? 'mqtt://127.0.0.1:1883';
+
+const kafkaBrokers = (
+  process.env.KAFKA_BROKERS ?? '127.0.0.1:29092'
+)
+  .split(',')
+  .map((broker) => broker.trim())
+  .filter(Boolean);
+
 const healthPort = Number(process.env.HEALTH_PORT ?? '8090');
 const topicFilter = 'smart-metering/meters/+/telemetry';
 
-const backend = new HttpBackendClient(apiBaseUrl);
-const handler = new TelemetryHandler(backend);
+const publisher = new KafkaTelemetryPublisher(kafkaBrokers);
+await publisher.connect();
 
+const handler = new TelemetryHandler(publisher);
 let mqttConnected = false;
 
 const client = connect(mqttUrl, {
@@ -22,12 +31,12 @@ const client = connect(mqttUrl, {
 
 startHealthServer(healthPort, {
   isMqttConnected: () => mqttConnected,
+  isKafkaConnected: () => publisher.isConnected(),
   metrics: () => handler.metrics,
 });
 
 client.on('connect', () => {
   mqttConnected = true;
-
   client.subscribe(topicFilter, { qos: 1 }, (error) => {
     if (error) {
       console.error(
@@ -44,6 +53,7 @@ client.on('connect', () => {
         event: 'mqtt-subscribed',
         broker: mqttUrl,
         topic: topicFilter,
+        kafkaBrokers,
       }),
     );
   });
@@ -52,15 +62,12 @@ client.on('connect', () => {
 client.on('reconnect', () => {
   mqttConnected = false;
 });
-
 client.on('offline', () => {
   mqttConnected = false;
 });
-
 client.on('close', () => {
   mqttConnected = false;
 });
-
 client.on('error', (error) => {
   console.error(
     JSON.stringify({
@@ -74,24 +81,31 @@ client.on('message', (topic, payload) => {
   void handler.handle(topic, payload).catch((error: unknown) => {
     console.error(
       JSON.stringify({
-        event: 'telemetry-ingestion-failed',
+        event: 'telemetry-kafka-publish-failed',
         topic,
-        message:
-          error instanceof Error ? error.message : String(error),
+        message: error instanceof Error ? error.message : String(error),
       }),
     );
   });
 });
 
-function shutdown(signal: string): void {
+let shuttingDown = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
   console.log(JSON.stringify({ event: 'shutdown', signal }));
+  client.end(true);
 
-  client.end(true, () => {
+  try {
+    await publisher.disconnect();
+  } finally {
     process.exit(0);
-  });
-
-  setTimeout(() => process.exit(1), 5_000).unref();
+  }
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));

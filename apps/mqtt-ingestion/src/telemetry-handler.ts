@@ -1,11 +1,12 @@
-import { telemetrySchema, toReadingRequest } from './contracts.js';
-import type { BackendClient } from './backend-client.js';
+import { telemetrySchema } from './contracts.js';
 import { MessageDeduplicator } from './deduplicator.js';
+import { createTelemetryEvent } from './events.js';
+import type { TelemetryEventPublisher } from './kafka-publisher.js';
 import { meterIdFromTelemetryTopic } from './topic.js';
 
 export interface IngestionMetrics {
   received: number;
-  ingested: number;
+  published: number;
   duplicates: number;
   rejected: number;
   failed: number;
@@ -14,14 +15,14 @@ export interface IngestionMetrics {
 export class TelemetryHandler {
   readonly metrics: IngestionMetrics = {
     received: 0,
-    ingested: 0,
+    published: 0,
     duplicates: 0,
     rejected: 0,
     failed: 0,
   };
 
   constructor(
-    private readonly backend: BackendClient,
+    private readonly publisher: TelemetryEventPublisher,
     private readonly deduplicator = new MessageDeduplicator(),
   ) {}
 
@@ -35,7 +36,6 @@ export class TelemetryHandler {
     }
 
     let json: unknown;
-
     try {
       json = JSON.parse(rawPayload.toString('utf8'));
     } catch {
@@ -62,13 +62,11 @@ export class TelemetryHandler {
     }
 
     try {
-      await this.backend.createReading(
-        telemetry.meterId,
-        toReadingRequest(telemetry),
+      await this.publisher.publishTelemetry(
+        createTelemetryEvent(telemetry),
       );
-
       this.deduplicator.complete(telemetry.messageId);
-      this.metrics.ingested += 1;
+      this.metrics.published += 1;
     } catch (error) {
       this.deduplicator.release(telemetry.messageId);
       this.metrics.failed += 1;

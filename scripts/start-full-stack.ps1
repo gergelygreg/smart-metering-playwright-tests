@@ -17,41 +17,36 @@ function Wait-Docker {
         if ($LASTEXITCODE -eq 0) {
             return
         }
-
         Start-Sleep -Seconds 1
     }
 
     throw "Docker engine did not become ready."
 }
 
-function Wait-ContainerHealthy {
+function Wait-Healthy {
     param(
-        [string]$ContainerName,
-        [int]$TimeoutSeconds = 150
+        [string]$Container,
+        [int]$TimeoutSeconds = 240
     )
 
-    for ($second = 0; $second -lt $TimeoutSeconds; $second++) {
-        $stateOutput = & wsl.exe -d $Distro -- docker inspect --format "{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" $ContainerName 2>$null
-        $state = ""
+    for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
+        $output = & wsl.exe -d $Distro -- docker inspect --format "{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" $Container 2>$null
+        $state = if ($null -eq $output) { "" } else { ($output | Out-String).Trim() }
 
-        if ($null -ne $stateOutput) {
-            $state = ($stateOutput | Out-String).Trim()
-        }
-
-        Write-Host "$ContainerName -> $state"
+        Write-Host "$Container -> $state"
 
         if ($state -eq "running/healthy") {
             return
         }
 
         if ($state -like "exited/*" -or $state -like "dead/*") {
-            throw "$ContainerName stopped before becoming healthy."
+            throw "$Container stopped before becoming healthy."
         }
 
         Start-Sleep -Seconds 1
     }
 
-    throw "$ContainerName did not become healthy."
+    throw "$Container did not become healthy."
 }
 
 Set-Location -LiteralPath $RepoRoot
@@ -61,16 +56,13 @@ $keepAlive = $null
 
 try {
     if (Test-Path -LiteralPath $PidFile) {
-        $existingPid = 0
+        $pidValue = 0
         [void][int]::TryParse(
             ([System.IO.File]::ReadAllText($PidFile)).Trim(),
-            [ref]$existingPid
+            [ref]$pidValue
         )
 
-        if ($existingPid -gt 0 -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
-            Write-Host "Existing WSL keepalive PID: $existingPid"
-        }
-        else {
+        if ($pidValue -le 0 -or -not (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)) {
             Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
         }
     }
@@ -78,20 +70,14 @@ try {
     if (-not (Test-Path -LiteralPath $PidFile)) {
         $keepAlive = Start-Process `
             -FilePath "wsl.exe" `
-            -ArgumentList @(
-                "-d",
-                $Distro,
-                "--",
-                "sleep",
-                "infinity"
-            ) `
+            -ArgumentList @("-d", $Distro, "--", "sleep", "infinity") `
             -WindowStyle Hidden `
             -PassThru
 
         Start-Sleep -Seconds 2
 
         if ($keepAlive.HasExited) {
-            throw "WSL keepalive exited immediately. ExitCode=$($keepAlive.ExitCode)"
+            throw "WSL keepalive exited immediately."
         }
 
         [System.IO.File]::WriteAllText(
@@ -99,31 +85,18 @@ try {
             [string]$keepAlive.Id,
             (New-Object System.Text.UTF8Encoding($false))
         )
-
-        Write-Host "WSL keepalive PID: $($keepAlive.Id)"
     }
 
     Wait-Docker
 
-    $composeArgs = @(
-        "-d",
-        $Distro,
-        "--",
-        "docker",
-        "compose",
-        "-f",
-        $ComposeFile
-    )
-
     if (-not $NoBuild) {
-        $buildServices = @(
+        foreach ($service in @(
             "backend",
             "frontend",
             "mqtt-ingestion",
+            "kafka-event-service",
             "device-simulator"
-        )
-
-        foreach ($service in $buildServices) {
+        )) {
             Write-Host "Building Docker service: $service"
 
             & wsl.exe `
@@ -136,71 +109,67 @@ try {
                 $service
 
             if ($LASTEXITCODE -ne 0) {
-                throw "docker compose build failed for service: $service"
+                throw "Docker build failed for service: $service"
             }
 
             & wsl.exe -d $Distro -- docker info *> $null
             if ($LASTEXITCODE -ne 0) {
-                throw "Docker/WSL became unavailable after building service: $service"
+                throw "Docker/WSL became unavailable after building $service."
             }
         }
     }
 
-    & wsl.exe @composeArgs up -d
-
+    & wsl.exe -d $Distro -- docker compose -f $ComposeFile up -d
     if ($LASTEXITCODE -ne 0) {
         throw "docker compose up failed."
     }
 
-    Wait-ContainerHealthy "smart-metering-full-postgres"
-    Wait-ContainerHealthy "smart-metering-full-mqtt"
-    Wait-ContainerHealthy "smart-metering-full-backend"
-    Wait-ContainerHealthy "smart-metering-full-mqtt-ingestion"
-    Wait-ContainerHealthy "smart-metering-full-frontend"
+    foreach ($container in @(
+        "smart-metering-full-postgres",
+        "smart-metering-full-mqtt",
+        "smart-metering-full-kafka",
+        "smart-metering-full-backend",
+        "smart-metering-full-mqtt-ingestion",
+        "smart-metering-full-kafka-event-service",
+        "smart-metering-full-frontend"
+    )) {
+        Wait-Healthy $container
+    }
 
     $backend = Invoke-RestMethod -Uri "http://127.0.0.1:18080/api/health" -TimeoutSec 5
-    $proxy = Invoke-RestMethod -Uri "http://127.0.0.1:8088/api/health" -TimeoutSec 5
-    $frontendHealth = Invoke-WebRequest -Uri "http://127.0.0.1:8088/healthz" -UseBasicParsing -TimeoutSec 5
-    $mqttIngestion = Invoke-RestMethod -Uri "http://127.0.0.1:18090/health" -TimeoutSec 5
+    $ingestion = Invoke-RestMethod -Uri "http://127.0.0.1:18090/health" -TimeoutSec 5
+    $eventService = Invoke-RestMethod -Uri "http://127.0.0.1:18100/health" -TimeoutSec 5
 
     if ($backend.status -ne "UP") {
         throw "Backend health is not UP."
     }
 
-    if ($proxy.status -ne "UP") {
-        throw "Frontend /api reverse proxy is not UP."
+    if (
+        $ingestion.status -ne "UP" -or
+        -not $ingestion.mqttConnected -or
+        -not $ingestion.kafkaConnected
+    ) {
+        throw "MQTT ingestion is not connected to both MQTT and Kafka."
     }
 
-    if ($frontendHealth.StatusCode -ne 200) {
-        throw "Frontend health endpoint failed."
-    }
-
-    if ($mqttIngestion.status -ne "UP" -or -not $mqttIngestion.mqttConnected) {
-        throw "MQTT ingestion health is not UP."
+    if ($eventService.status -ne "UP") {
+        throw "Kafka event service health is not UP."
     }
 
     Write-Host ""
-    Write-Host "================================================"
-    Write-Host "SMART METERING MQTT DOCKER STACK IS READY"
-    Write-Host "================================================"
-    Write-Host "Frontend:        http://127.0.0.1:8088"
-    Write-Host "Backend:         http://127.0.0.1:18080"
-    Write-Host "MQTT broker:     mqtt://127.0.0.1:1883"
-    Write-Host "MQTT ingestion:  http://127.0.0.1:18090/health"
-    Write-Host "PostgreSQL:      127.0.0.1:15432"
-    Write-Host ""
-    Write-Host "Run simulator:"
-    Write-Host ".\scripts\run-device-simulator.ps1 -Profile mixed -Count 4"
-    Write-Host ""
-    Write-Host "Stop:"
-    Write-Host ".\scripts\stop-full-stack.ps1"
+    Write-Host "============================================"
+    Write-Host "EVENT-DRIVEN SMART METERING STACK IS READY"
+    Write-Host "============================================"
+    Write-Host "Frontend:       http://127.0.0.1:8088"
+    Write-Host "Backend:        http://127.0.0.1:18080"
+    Write-Host "MQTT:           mqtt://127.0.0.1:1883"
+    Write-Host "MQTT ingestion: http://127.0.0.1:18090/health"
+    Write-Host "Kafka:          127.0.0.1:29092"
+    Write-Host "Kafka events:   http://127.0.0.1:18100/events"
 }
 catch {
-    Write-Host ""
-    Write-Host "Startup failed: $($_.Exception.Message)"
-
     try {
-        & wsl.exe -d $Distro -- docker compose -f $ComposeFile logs --no-color --tail 180
+        & wsl.exe -d $Distro -- docker compose -f $ComposeFile logs --no-color --tail 250
     }
     catch {
     }

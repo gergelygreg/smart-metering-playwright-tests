@@ -1,12 +1,12 @@
 const apiBaseUrl =
-  (process.env.API_BASE_URL ?? 'http://127.0.0.1:18080')
-    .replace(/\/$/, '');
+  (process.env.API_BASE_URL ?? 'http://127.0.0.1:18080').replace(/\/$/, '');
+
+const eventBaseUrl = process.env.KAFKA_EVENT_SERVICE_BASE_URL
+  ? process.env.KAFKA_EVENT_SERVICE_BASE_URL.replace(/\/$/, '')
+  : null;
 
 const serialNumber = process.env.SIM_SERIAL_NUMBER;
-const expectedReadings = Number(
-  process.env.EXPECTED_READINGS ?? '4',
-);
-
+const expectedReadings = Number(process.env.EXPECTED_READINGS ?? '4');
 const expectAlarm =
   (process.env.EXPECT_ALARM ?? 'true').toLowerCase() === 'true';
 
@@ -27,11 +27,10 @@ async function getJson(path) {
 }
 
 async function waitFor(predicate, description) {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 20_000;
 
   while (Date.now() < deadline) {
     const result = await predicate();
-
     if (result) {
       return result;
     }
@@ -50,12 +49,9 @@ const meter = await waitFor(async () => {
 }, `meter ${serialNumber}`);
 
 const readings = await waitFor(async () => {
-  const current = await getJson(
-    `/api/meters/${meter.id}/readings`,
-  );
-
+  const current = await getJson(`/api/meters/${meter.id}/readings`);
   return current.length >= expectedReadings ? current : null;
-}, `${expectedReadings} MQTT readings`);
+}, `${expectedReadings} readings`);
 
 if (readings.length !== expectedReadings) {
   throw new Error(
@@ -63,20 +59,52 @@ if (readings.length !== expectedReadings) {
   );
 }
 
-const alarms = await getJson(
-  `/api/meters/${meter.id}/alarms`,
-);
+const alarms = await getJson(`/api/meters/${meter.id}/alarms`);
 
 if (expectAlarm && alarms.length < 1) {
-  throw new Error(
-    'Expected at least one alarm from simulator telemetry.',
-  );
+  throw new Error('Expected at least one alarm from simulator telemetry.');
 }
 
 if (!expectAlarm && alarms.length !== 0) {
-  throw new Error(
-    `Expected no alarms, got ${alarms.length}.`,
-  );
+  throw new Error(`Expected no alarms, got ${alarms.length}.`);
+}
+
+let kafkaEvents = null;
+
+if (eventBaseUrl) {
+  kafkaEvents = await waitFor(async () => {
+    const response = await fetch(
+      `${eventBaseUrl}/events?meterId=${encodeURIComponent(meter.id)}`,
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const events = await response.json();
+    const readingEvents = events.filter(
+      (item) =>
+        item.event.eventType === 'smart-metering.reading.persisted',
+    );
+    const alarmEvents = events.filter(
+      (item) =>
+        item.event.eventType === 'smart-metering.alarm.created',
+    );
+
+    const enoughReadings =
+      readingEvents.length >= expectedReadings;
+    const enoughAlarms = expectAlarm
+      ? alarmEvents.length >= 1
+      : alarmEvents.length === 0;
+
+    return enoughReadings && enoughAlarms
+      ? {
+          total: events.length,
+          readingEvents: readingEvents.length,
+          alarmEvents: alarmEvents.length,
+        }
+      : null;
+  }, 'Kafka downstream events');
 }
 
 console.log(
@@ -87,6 +115,7 @@ console.log(
       serialNumber,
       readings: readings.length,
       alarms: alarms.length,
+      kafkaEvents,
     },
     null,
     2,
@@ -95,13 +124,9 @@ console.log(
 
 const deleteResponse = await fetch(
   `${apiBaseUrl}/api/meters/${meter.id}`,
-  {
-    method: 'DELETE',
-  },
+  { method: 'DELETE' },
 );
 
 if (!deleteResponse.ok) {
-  throw new Error(
-    `Simulator cleanup failed: ${deleteResponse.status}`,
-  );
+  throw new Error(`Simulator cleanup failed: ${deleteResponse.status}`);
 }

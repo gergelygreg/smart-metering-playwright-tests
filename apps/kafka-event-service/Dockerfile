@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+
+FROM node:22.23.2-alpine3.24 AS build
+
+WORKDIR /workspace
+COPY package.json package-lock.json ./
+RUN npm install --global npm@11.6.0 && npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:22.23.2-alpine3.24 AS runtime
+
+RUN apk add --no-cache wget \
+    && addgroup -S eventservice \
+    && adduser -S -G eventservice -h /app eventservice
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install --global npm@11.6.0 \
+    && npm ci --omit=dev \
+    && npm cache clean --force
+
+COPY --from=build --chown=eventservice:eventservice /workspace/dist ./dist
+
+USER eventservice
+EXPOSE 8100
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=12 \
+    CMD wget -qO- http://127.0.0.1:8100/health >/dev/null 2>&1 || exit 1
+
+CMD ["node", "dist/index.js"]

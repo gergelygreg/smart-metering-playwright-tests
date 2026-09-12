@@ -3,80 +3,48 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - ci
+    schedule: { interval: weekly }
 
   - package-ecosystem: npm
     directory: /
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - test-automation
+    schedule: { interval: weekly }
 
   - package-ecosystem: npm
     directory: /apps/frontend
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - frontend
+    schedule: { interval: weekly }
 
   - package-ecosystem: npm
     directory: /apps/mqtt-ingestion
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - mqtt
+    schedule: { interval: weekly }
 
   - package-ecosystem: npm
     directory: /apps/device-simulator
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - mqtt
+    schedule: { interval: weekly }
+
+  - package-ecosystem: npm
+    directory: /apps/kafka-event-service
+    schedule: { interval: weekly }
 
   - package-ecosystem: maven
     directory: /apps/backend
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - backend
+    schedule: { interval: weekly }
 
   - package-ecosystem: docker
     directory: /apps/backend
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - docker
+    schedule: { interval: weekly }
 
   - package-ecosystem: docker
     directory: /apps/frontend
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - docker
+    schedule: { interval: weekly }
 
   - package-ecosystem: docker
     directory: /apps/mqtt-ingestion
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - docker
+    schedule: { interval: weekly }
 
   - package-ecosystem: docker
     directory: /apps/device-simulator
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - docker
+    schedule: { interval: weekly }
+
+  - package-ecosystem: docker
+    directory: /apps/kafka-event-service
+    schedule: { interval: weekly }

@@ -23,3 +23,7 @@ apps/mqtt-ingestion/node_modules/
 apps/mqtt-ingestion/dist/
 playwright-report-mqtt/
 .mqtt-phase-artifacts/
+apps/kafka-event-service/node_modules/
+apps/kafka-event-service/dist/
+playwright-report-kafka/
+.kafka-phase-artifacts/

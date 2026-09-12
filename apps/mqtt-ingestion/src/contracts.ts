@@ -15,23 +15,3 @@ export const telemetrySchema = z.object({
 });
 
 export type TelemetryMessage = z.infer<typeof telemetrySchema>;
-
-export interface ReadingRequest {
-  timestamp: string;
-  voltage: number;
-  current: number;
-  activePower: number;
-  energyKwh: number;
-}
-
-export function toReadingRequest(
-  telemetry: TelemetryMessage,
-): ReadingRequest {
-  return {
-    timestamp: telemetry.timestamp,
-    voltage: telemetry.voltage,
-    current: telemetry.current,
-    activePower: telemetry.activePower,
-    energyKwh: telemetry.energyKwh,
-  };
-}

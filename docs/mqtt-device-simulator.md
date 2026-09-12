@@ -214,3 +214,11 @@ A production-like hardening phase would add:
 - durable idempotency
 - dead-letter / retry handling
 - broker clustering and observability
+## Kafka phase extension
+
+Validated MQTT telemetry is now published to
+`smart-metering.telemetry.received.v1`. The Kafka event service consumes this topic,
+executes the existing Reading/Alarm backend workflow and publishes downstream domain
+events.
+
+See `docs/kafka-event-pipeline.md`.

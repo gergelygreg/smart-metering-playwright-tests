@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  telemetrySchema,
-  toReadingRequest,
-} from './contracts.js';
+import { telemetrySchema } from './contracts.js';
 
 describe('MQTT telemetry contract', () => {
   const telemetry = {
@@ -19,11 +16,11 @@ describe('MQTT telemetry contract', () => {
     source: 'smart-meter-device-simulator' as const,
   };
 
-  it('accepts a valid smart-meter telemetry message', () => {
+  it('accepts valid smart-meter telemetry', () => {
     expect(telemetrySchema.safeParse(telemetry).success).toBe(true);
   });
 
-  it('rejects an invalid voltage', () => {
+  it('rejects invalid voltage', () => {
     expect(
       telemetrySchema.safeParse({
         ...telemetry,
@@ -32,13 +29,12 @@ describe('MQTT telemetry contract', () => {
     ).toBe(false);
   });
 
-  it('maps transport telemetry to the existing backend reading contract', () => {
-    expect(toReadingRequest(telemetry)).toEqual({
-      timestamp: telemetry.timestamp,
-      voltage: telemetry.voltage,
-      current: telemetry.current,
-      activePower: telemetry.activePower,
-      energyKwh: telemetry.energyKwh,
-    });
+  it('rejects unknown sources', () => {
+    expect(
+      telemetrySchema.safeParse({
+        ...telemetry,
+        source: 'unknown',
+      }).success,
+    ).toBe(false);
   });
 });

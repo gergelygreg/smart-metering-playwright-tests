@@ -3,6 +3,7 @@ import type { IngestionMetrics } from './telemetry-handler.js';
 
 export interface HealthState {
   isMqttConnected(): boolean;
+  isKafkaConnected(): boolean;
   metrics(): IngestionMetrics;
 }
 
@@ -18,17 +19,19 @@ export function startHealthServer(
     }
 
     const mqttConnected = state.isMqttConnected();
-    const statusCode = mqttConnected ? 200 : 503;
+    const kafkaConnected = state.isKafkaConnected();
+    const ready = mqttConnected && kafkaConnected;
 
-    response.writeHead(statusCode, {
+    response.writeHead(ready ? 200 : 503, {
       'content-type': 'application/json',
     });
 
     response.end(
       JSON.stringify({
-        status: mqttConnected ? 'UP' : 'DEGRADED',
+        status: ready ? 'UP' : 'DEGRADED',
         service: 'mqtt-ingestion',
         mqttConnected,
+        kafkaConnected,
         metrics: state.metrics(),
       }),
     );

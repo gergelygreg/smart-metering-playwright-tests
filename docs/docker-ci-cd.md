@@ -167,3 +167,8 @@ version tags generated from the Git tag.
 - frontend Docker base images
 
 on a weekly cadence.
+## Kafka extension
+
+The full Compose/CI topology also contains Apache Kafka 4.3.1 in KRaft mode and the
+Kafka event service. CI validates REST, MQTT, Kafka and browser flows before GHCR
+publication.

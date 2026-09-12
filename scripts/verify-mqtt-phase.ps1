@@ -220,6 +220,7 @@ try {
         "backend",
         "frontend",
         "mqtt-ingestion",
+        "kafka-event-service",
         "device-simulator"
     )
 
@@ -256,8 +257,10 @@ try {
 
     Wait-ContainerHealthy "smart-metering-full-postgres"
     Wait-ContainerHealthy "smart-metering-full-mqtt"
+    Wait-ContainerHealthy "smart-metering-full-kafka"
     Wait-ContainerHealthy "smart-metering-full-backend"
     Wait-ContainerHealthy "smart-metering-full-mqtt-ingestion"
+    Wait-ContainerHealthy "smart-metering-full-kafka-event-service"
     Wait-ContainerHealthy "smart-metering-full-frontend"
 
     Write-Host ""
@@ -383,8 +386,10 @@ try {
 
     Assert-Healthy "smart-metering-full-postgres"
     Assert-Healthy "smart-metering-full-mqtt"
+    Assert-Healthy "smart-metering-full-kafka"
     Assert-Healthy "smart-metering-full-backend"
     Assert-Healthy "smart-metering-full-mqtt-ingestion"
+    Assert-Healthy "smart-metering-full-kafka-event-service"
     Assert-Healthy "smart-metering-full-frontend"
 
     Write-Host ""

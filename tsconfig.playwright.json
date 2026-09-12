@@ -4,6 +4,7 @@
     "apps/frontend",
     "apps/device-simulator",
     "apps/mqtt-ingestion",
+    "apps/kafka-event-service",
     "node_modules"
   ]
 }

@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BackendClient } from './backend-client.js';
+import type { TelemetryEventPublisher } from './kafka-publisher.js';
 import { TelemetryHandler } from './telemetry-handler.js';
 
-function validPayload(
-  overrides: Record<string, unknown> = {},
-): Buffer {
+function validPayload(overrides: Record<string, unknown> = {}): Buffer {
   return Buffer.from(
     JSON.stringify({
       messageId: 'fdd414e8-b36d-4659-a455-c07a29b06739',
@@ -27,33 +25,36 @@ describe('TelemetryHandler', () => {
   const topic =
     'smart-metering/meters/d2719db7-013b-4bb0-a56d-3793dc6be90f/telemetry';
 
-  it('ingests a valid telemetry message once', async () => {
-    const createReading = vi.fn().mockResolvedValue(undefined);
-    const backend: BackendClient = { createReading };
-    const handler = new TelemetryHandler(backend);
+  it('publishes a valid telemetry event once', async () => {
+    const publishTelemetry = vi.fn().mockResolvedValue(undefined);
+    const publisher: TelemetryEventPublisher = { publishTelemetry };
+    const handler = new TelemetryHandler(publisher);
 
     await handler.handle(topic, validPayload());
 
-    expect(createReading).toHaveBeenCalledTimes(1);
-    expect(handler.metrics.ingested).toBe(1);
+    expect(publishTelemetry).toHaveBeenCalledTimes(1);
+    expect(publishTelemetry.mock.calls[0][0]).toMatchObject({
+      eventType: 'smart-metering.telemetry.received',
+      eventVersion: 1,
+      correlationId: 'fdd414e8-b36d-4659-a455-c07a29b06739',
+    });
+    expect(handler.metrics.published).toBe(1);
   });
 
-  it('drops duplicate message ids', async () => {
-    const createReading = vi.fn().mockResolvedValue(undefined);
-    const backend: BackendClient = { createReading };
-    const handler = new TelemetryHandler(backend);
+  it('drops duplicate device message ids before Kafka', async () => {
+    const publishTelemetry = vi.fn().mockResolvedValue(undefined);
+    const handler = new TelemetryHandler({ publishTelemetry });
 
     await handler.handle(topic, validPayload());
     await handler.handle(topic, validPayload());
 
-    expect(createReading).toHaveBeenCalledTimes(1);
+    expect(publishTelemetry).toHaveBeenCalledTimes(1);
     expect(handler.metrics.duplicates).toBe(1);
   });
 
-  it('rejects a meter id mismatch between topic and payload', async () => {
-    const createReading = vi.fn().mockResolvedValue(undefined);
-    const backend: BackendClient = { createReading };
-    const handler = new TelemetryHandler(backend);
+  it('rejects topic/payload meter mismatch', async () => {
+    const publishTelemetry = vi.fn().mockResolvedValue(undefined);
+    const handler = new TelemetryHandler({ publishTelemetry });
 
     await handler.handle(
       topic,
@@ -62,38 +63,36 @@ describe('TelemetryHandler', () => {
       }),
     );
 
-    expect(createReading).not.toHaveBeenCalled();
+    expect(publishTelemetry).not.toHaveBeenCalled();
     expect(handler.metrics.rejected).toBe(1);
   });
 
   it('rejects malformed JSON', async () => {
-    const createReading = vi.fn().mockResolvedValue(undefined);
-    const backend: BackendClient = { createReading };
-    const handler = new TelemetryHandler(backend);
+    const publishTelemetry = vi.fn();
+    const handler = new TelemetryHandler({ publishTelemetry });
 
     await handler.handle(topic, Buffer.from('{not-json'));
 
-    expect(createReading).not.toHaveBeenCalled();
+    expect(publishTelemetry).not.toHaveBeenCalled();
     expect(handler.metrics.rejected).toBe(1);
   });
 
-  it('releases a failed message so the broker redelivery can retry it', async () => {
-    const createReading = vi
+  it('releases failed Kafka publication for redelivery retry', async () => {
+    const publishTelemetry = vi
       .fn()
-      .mockRejectedValueOnce(new Error('backend unavailable'))
+      .mockRejectedValueOnce(new Error('kafka unavailable'))
       .mockResolvedValueOnce(undefined);
 
-    const backend: BackendClient = { createReading };
-    const handler = new TelemetryHandler(backend);
+    const handler = new TelemetryHandler({ publishTelemetry });
 
     await expect(
       handler.handle(topic, validPayload()),
-    ).rejects.toThrow('backend unavailable');
+    ).rejects.toThrow('kafka unavailable');
 
     await handler.handle(topic, validPayload());
 
-    expect(createReading).toHaveBeenCalledTimes(2);
+    expect(publishTelemetry).toHaveBeenCalledTimes(2);
     expect(handler.metrics.failed).toBe(1);
-    expect(handler.metrics.ingested).toBe(1);
+    expect(handler.metrics.published).toBe(1);
   });
 });

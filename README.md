@@ -72,3 +72,28 @@ Full acceptance:
 ```
 
 See `docs/mqtt-device-simulator.md`.
+## Kafka event-driven pipeline
+
+Device telemetry now crosses an asynchronous Kafka boundary:
+
+```text
+Device -> MQTT -> Mosquitto -> MQTT Ingestion -> Kafka
+                                              |
+                                              v
+                                     Kafka Event Service
+                                              |
+                                  Spring Boot / PostgreSQL
+                                              |
+                          reading.persisted / alarm.created
+```
+
+The lab uses Apache Kafka in KRaft mode, versioned topics, per-meter keys, consumer
+groups, correlation/causation metadata and explicit at-least-once semantics.
+
+Run the complete acceptance with:
+
+```powershell
+.\scripts\verify-kafka-phase.ps1
+```
+
+See `docs/kafka-event-pipeline.md`.

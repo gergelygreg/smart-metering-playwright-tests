@@ -34,8 +34,10 @@ Set-Location -LiteralPath $RepoRoot
 $requiredContainers = @(
     "smart-metering-full-postgres",
     "smart-metering-full-mqtt",
+    "smart-metering-full-kafka",
     "smart-metering-full-backend",
-    "smart-metering-full-mqtt-ingestion"
+    "smart-metering-full-mqtt-ingestion",
+    "smart-metering-full-kafka-event-service"
 )
 
 foreach ($container in $requiredContainers) {

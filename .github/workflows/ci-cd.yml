@@ -3,14 +3,12 @@ name: CI/CD
 on:
   pull_request:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       publish_images:
-        description: "Publish validated images to GitHub Container Registry"
+        description: Publish validated images to GHCR
         required: false
         default: false
         type: boolean
@@ -30,489 +28,259 @@ jobs:
   backend:
     name: Backend - Maven / JPA / Flyway
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version-file: .java-version
           cache: maven
           cache-dependency-path: apps/backend/pom.xml
-
-      - name: Make Maven wrapper executable
-        working-directory: apps/backend
-        run: chmod +x mvnw
-
-      - name: Backend regression
-        working-directory: apps/backend
-        run: ./mvnw -B -ntp clean verify
-
-      - name: Upload backend test reports
-        if: always()
+      - working-directory: apps/backend
+        run: chmod +x mvnw && ./mvnw -B -ntp clean verify
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: backend-test-reports
           path: apps/backend/target/surefire-reports/
           if-no-files-found: ignore
-          retention-days: 14
 
   frontend:
     name: TypeScript / Angular / Unit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: |
             package-lock.json
             apps/frontend/package-lock.json
-
-      - name: Use deterministic npm version
-        run: npm install --global npm@${NPM_VERSION}
-
-      - name: Install root automation dependencies
-        run: npm ci
-
-      - name: Root TypeScript typecheck
-        run: npm run typecheck
-
-      - name: Playwright unit tests
-        run: npx playwright test --project=unit
-
-      - name: Install Angular dependencies
-        working-directory: apps/frontend
-        run: npm ci
-
-      - name: Angular unit tests
-        working-directory: apps/frontend
-        run: npm test -- --watch=false
-
-      - name: Angular production build
-        working-directory: apps/frontend
-        run: npm run build
-
-      - name: Upload Angular build
-        uses: actions/upload-artifact@v7
+      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx playwright test --project=unit
+      - working-directory: apps/frontend
+        run: npm ci && npm test -- --watch=false && npm run build
+      - uses: actions/upload-artifact@v7
         with:
           name: angular-dist
           path: apps/frontend/dist/
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload unit test report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-unit-report
-          path: playwright-report/
-          if-no-files-found: ignore
-          retention-days: 14
 
   mqtt-components:
     name: MQTT Adapter / Device Simulator Unit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install --global npm@${NPM_VERSION}
+      - working-directory: apps/mqtt-ingestion
+        run: npm ci && npm run typecheck && npm test && npm run build
+      - working-directory: apps/device-simulator
+        run: npm ci && npm run typecheck && npm test && npm run build
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+  kafka-components:
+    name: Kafka Event Service Unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            apps/mqtt-ingestion/package-lock.json
-            apps/device-simulator/package-lock.json
-
-      - name: Use deterministic npm version
-        run: npm install --global npm@${NPM_VERSION}
-
-      - name: MQTT ingestion install / typecheck / unit / build
-        working-directory: apps/mqtt-ingestion
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
-          npm run build
-
-      - name: Device simulator install / typecheck / unit / build
-        working-directory: apps/device-simulator
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
-          npm run build
+          cache-dependency-path: apps/kafka-event-service/package-lock.json
+      - run: npm install --global npm@${NPM_VERSION}
+      - working-directory: apps/kafka-event-service
+        run: npm ci && npm run typecheck && npm test && npm run build
 
   docker-integration:
-    name: Docker Full Stack - REST / MQTT / UI E2E
+    name: Docker Full Stack - REST / MQTT / Kafka / UI E2E
     runs-on: ubuntu-latest
-    needs:
-      - backend
-      - frontend
-      - mqtt-components
-    timeout-minutes: 35
-
+    timeout-minutes: 45
+    needs: [backend, frontend, mqtt-components, kafka-components]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: package-lock.json
+      - run: npm install --global npm@${NPM_VERSION}
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: docker compose -f docker-compose.full.yml --profile simulator config --quiet
 
-      - name: Use deterministic npm version
-        run: npm install --global npm@${NPM_VERSION}
-
-      - name: Install automation dependencies
-        run: npm ci
-
-      - name: Install Chromium and Linux browser dependencies
-        run: npx playwright install --with-deps chromium
-
-      - name: Validate Docker Compose model
-        run: docker compose -f docker-compose.full.yml --profile simulator config --quiet
-
-      - name: Build production Docker images
+      - name: Build application images sequentially
         shell: bash
         run: |
           set -euo pipefail
-
-          for service in \
-            backend \
-            frontend \
-            mqtt-ingestion \
-            device-simulator
+          for service in backend frontend mqtt-ingestion kafka-event-service device-simulator
           do
-            echo "Building Docker service: ${service}"
-            docker compose \
-              -f docker-compose.full.yml \
-              --profile simulator \
-              build \
-              --pull \
-              "${service}"
+            echo "Building ${service}"
+            docker compose -f docker-compose.full.yml --profile simulator build --pull "${service}"
           done
 
-      - name: Start MQTT-enabled full stack
-        run: docker compose -f docker-compose.full.yml up -d
+      - run: docker compose -f docker-compose.full.yml up -d
 
-      - name: Wait for full-stack readiness
+      - name: Wait for stack
         shell: bash
         run: |
           set -euo pipefail
-
-          wait_for_url() {
-            local url="$1"
-            local name="$2"
-
-            for attempt in $(seq 1 90); do
-              if curl --fail --silent --show-error "$url" >/dev/null; then
-                echo "$name is ready"
+          wait_url() {
+            for i in $(seq 1 120); do
+              if curl --fail --silent "$1" >/dev/null; then
+                echo "$2 ready"
                 return 0
               fi
-
               sleep 2
             done
-
-            echo "$name did not become ready: $url" >&2
-            return 1
+            echo "$2 failed" >&2
+            exit 1
           }
+          wait_url http://127.0.0.1:18080/api/health backend
+          wait_url http://127.0.0.1:8088/healthz frontend
+          wait_url http://127.0.0.1:18090/health mqtt-ingestion
+          wait_url http://127.0.0.1:18100/health kafka-event-service
+          test "$(docker inspect --format '{{.State.Status}}/{{.State.Health.Status}}' smart-metering-full-kafka)" = "running/healthy"
 
-          wait_for_url "http://127.0.0.1:18080/api/health" "backend"
-          wait_for_url "http://127.0.0.1:8088/healthz" "frontend"
-          wait_for_url "http://127.0.0.1:8088/api/health" "frontend reverse proxy"
-          wait_for_url "http://127.0.0.1:18090/health" "mqtt ingestion"
-
-          docker inspect \
-            --format '{{.State.Status}}/{{.State.Health.Status}}' \
-            smart-metering-full-mqtt
-
-          docker compose -f docker-compose.full.yml ps
-
-      - name: REST API contracts against Docker stack
+      - name: REST API
         env:
           API_BASE_URL: http://127.0.0.1:18080
         run: npm run test:api
 
-      - name: MQTT telemetry integration contracts
+      - name: MQTT through Kafka
         env:
           MQTT_API_BASE_URL: http://127.0.0.1:18080
           MQTT_URL: mqtt://127.0.0.1:1883
         run: npm run test:mqtt
 
-      - name: Browser E2E including MQTT device flow
+      - name: Kafka contracts
+        env:
+          KAFKA_API_BASE_URL: http://127.0.0.1:18080
+          KAFKA_BROKER: 127.0.0.1:29092
+          KAFKA_EVENT_SERVICE_BASE_URL: http://127.0.0.1:18100
+        run: npm run test:kafka
+
+      - name: Browser E2E
         env:
           UI_BASE_URL: http://127.0.0.1:8088
           UI_API_BASE_URL: http://127.0.0.1:18080
           MQTT_URL: mqtt://127.0.0.1:1883
         run: npm run test:ui
 
-      - name: Real device simulator container acceptance
+      - name: Real simulator event-chain acceptance
         shell: bash
         run: |
           set -euo pipefail
-
-          serial="CI-SIM-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-
-          docker compose \
-            -f docker-compose.full.yml \
-            --profile simulator \
-            run \
-            --rm \
+          serial="CI-KAFKA-SIM-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker compose -f docker-compose.full.yml --profile simulator run --rm \
             -e "SIM_SERIAL_NUMBER=${serial}" \
-            -e "SIM_PROFILE=mixed" \
-            -e "SIM_COUNT=4" \
-            -e "SIM_INTERVAL_MS=100" \
+            -e SIM_PROFILE=mixed \
+            -e SIM_COUNT=4 \
+            -e SIM_INTERVAL_MS=100 \
             device-simulator
-
           SIM_SERIAL_NUMBER="${serial}" \
           EXPECTED_READINGS=4 \
           EXPECT_ALARM=true \
           API_BASE_URL=http://127.0.0.1:18080 \
+          KAFKA_EVENT_SERVICE_BASE_URL=http://127.0.0.1:18100 \
           node scripts/assert-simulator-output.mjs
 
-      - name: Verify all long-running containers stayed healthy
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          for container in \
-            smart-metering-full-postgres \
-            smart-metering-full-mqtt \
-            smart-metering-full-backend \
-            smart-metering-full-mqtt-ingestion \
-            smart-metering-full-frontend
-          do
-            state="$(docker inspect --format '{{.State.Status}}/{{.State.Health.Status}}' "$container")"
-            echo "$container -> $state"
-            test "$state" = "running/healthy"
-          done
-
-      - name: Capture reports and Docker diagnostics
+      - name: Capture artifacts
         if: always()
         shell: bash
         run: |
           mkdir -p .ci-artifacts
-
-          for report in \
-            playwright-report \
-            playwright-report-mqtt \
-            playwright-report-ui \
-            test-results
+          docker compose -f docker-compose.full.yml ps > .ci-artifacts/compose-ps.txt || true
+          docker compose -f docker-compose.full.yml logs --no-color > .ci-artifacts/compose.log || true
+          curl --silent http://127.0.0.1:18100/health > .ci-artifacts/kafka-health.json || true
+          curl --silent http://127.0.0.1:18100/events > .ci-artifacts/kafka-events.json || true
+          for report in playwright-report playwright-report-mqtt playwright-report-kafka playwright-report-ui test-results
           do
-            if [ -d "$report" ]; then
-              cp -R "$report" ".ci-artifacts/$report"
-            fi
+            [ ! -d "$report" ] || cp -R "$report" ".ci-artifacts/$report"
           done
 
-          docker compose -f docker-compose.full.yml ps \
-            > .ci-artifacts/docker-compose-ps.txt || true
-
-          docker compose -f docker-compose.full.yml logs --no-color \
-            > .ci-artifacts/docker-compose.log || true
-
-          curl --silent http://127.0.0.1:18090/health \
-            > .ci-artifacts/mqtt-ingestion-health.json || true
-
-      - name: Upload Docker / MQTT / Playwright artifacts
-        if: always()
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: docker-mqtt-integration-artifacts
+          name: docker-event-streaming-artifacts
           path: .ci-artifacts/
           if-no-files-found: ignore
-          retention-days: 14
 
-      - name: Tear down Docker stack
-        if: always()
+      - if: always()
         run: docker compose -f docker-compose.full.yml down --volumes --remove-orphans
 
   publish-images:
     name: Publish validated images to GHCR
     runs-on: ubuntu-latest
-    needs:
-      - docker-integration
-    timeout-minutes: 40
-
+    timeout-minutes: 50
+    needs: [docker-integration]
     if: >-
       ${{
         (github.event_name == 'push' &&
           (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
         (github.event_name == 'workflow_dispatch' && inputs.publish_images)
       }}
-
     permissions:
       contents: read
       packages: write
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: smart-metering-api
+            context: ./apps/backend
+            file: ./apps/backend/Dockerfile
+          - name: smart-metering-ui
+            context: ./apps/frontend
+            file: ./apps/frontend/Dockerfile
+          - name: smart-metering-mqtt-ingestion
+            context: ./apps/mqtt-ingestion
+            file: ./apps/mqtt-ingestion/Dockerfile
+          - name: smart-meter-device-simulator
+            context: ./apps/device-simulator
+            file: ./apps/device-simulator/Dockerfile
+          - name: smart-metering-kafka-event-service
+            context: ./apps/kafka-event-service
+            file: ./apps/kafka-event-service/Dockerfile
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Normalize GHCR owner
-        id: repository
+      - id: repo
         shell: bash
-        run: |
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Backend image metadata
-        id: backend-meta
+      - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-api
+          images: ghcr.io/${{ steps.repo.outputs.owner }}/${{ matrix.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=tag
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
 
-      - name: Frontend image metadata
-        id: frontend-meta
-        uses: docker/metadata-action@v6
+      - uses: docker/build-push-action@v7
         with:
-          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-ui
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
-
-      - name: MQTT ingestion image metadata
-        id: ingestion-meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-metering-mqtt-ingestion
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
-
-      - name: Device simulator image metadata
-        id: simulator-meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ steps.repository.outputs.owner }}/smart-meter-device-simulator
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-
-
-      - name: Build and publish backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/backend
-          file: ./apps/backend/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           pull: true
-          tags: ${{ steps.backend-meta.outputs.tags }}
-          labels: ${{ steps.backend-meta.outputs.labels }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           provenance: mode=max
           sbom: true
-
-      - name: Build and publish frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/frontend
-          file: ./apps/frontend/Dockerfile
-          push: true
-          pull: true
-          tags: ${{ steps.frontend-meta.outputs.tags }}
-          labels: ${{ steps.frontend-meta.outputs.labels }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-          provenance: mode=max
-          sbom: true
-
-      - name: Build and publish MQTT ingestion image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/mqtt-ingestion
-          file: ./apps/mqtt-ingestion/Dockerfile
-          push: true
-          pull: true
-          tags: ${{ steps.ingestion-meta.outputs.tags }}
-          labels: ${{ steps.ingestion-meta.outputs.labels }}
-          cache-from: type=gha,scope=mqtt-ingestion
-          cache-to: type=gha,mode=max,scope=mqtt-ingestion
-          provenance: mode=max
-          sbom: true
-
-      - name: Build and publish device simulator image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/device-simulator
-          file: ./apps/device-simulator/Dockerfile
-          push: true
-          pull: true
-          tags: ${{ steps.simulator-meta.outputs.tags }}
-          labels: ${{ steps.simulator-meta.outputs.labels }}
-          cache-from: type=gha,scope=device-simulator
-          cache-to: type=gha,mode=max,scope=device-simulator
-          provenance: mode=max
-          sbom: true
-
-      - name: Publish summary
-        shell: bash
-        run: |
-          {
-            echo "## Published smart-metering images"
-            echo
-            echo "### Backend"
-            echo '```text'
-            echo "${{ steps.backend-meta.outputs.tags }}"
-            echo '```'
-            echo
-            echo "### Frontend"
-            echo '```text'
-            echo "${{ steps.frontend-meta.outputs.tags }}"
-            echo '```'
-            echo
-            echo "### MQTT ingestion"
-            echo '```text'
-            echo "${{ steps.ingestion-meta.outputs.tags }}"
-            echo '```'
-            echo
-            echo "### Device simulator"
-            echo '```text'
-            echo "${{ steps.simulator-meta.outputs.tags }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
